@@ -1,9 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  cacheComponents: true,
-  partialPrefetching: true,
+  // 实时仪表盘应用:所有页面依赖会话与数据库实时读,禁用静态预渲染缓存
+  cacheComponents: false,
   turbopack: {
     rules: {
       "*.css": {
