@@ -86,12 +86,12 @@ export const MEMBERS: MemberCatView[] = SEEDS.map((s, i) => {
   };
 });
 
-export const ZONE_META: Record<Zone, { label: string; desc: string; accent: string; glow: string }> = {
-  premium: { label: "高价值庄园", desc: "累计消费千元以上,流失一位都是重损失", accent: "#FFC94D", glow: "rgba(255,201,77,.16)" },
-  active: { label: "活跃街区", desc: "30 天内有到店,关系健康", accent: "#3ECF8E", glow: "rgba(62,207,142,.13)" },
-  new: { label: "新会员村", desc: "入会 90 天内,二单转化是关键", accent: "#4ECFE0", glow: "rgba(78,207,224,.13)" },
-  sleeping: { label: "沉睡森林", desc: "35 天以上未到店,正在打瞌睡", accent: "#7C6CFF", glow: "rgba(124,108,255,.14)" },
-  risk: { label: "风险警戒区", desc: "流失风险高,需要立刻行动", accent: "#FF5F7E", glow: "rgba(255,95,126,.14)" },
+export const ZONE_META: Record<Zone, { label: string; desc: string; accent: string; glow: string; advice: string }> = {
+  premium: { label: "高价值庄园", desc: "累计消费千元以上,流失一位都是重损失", accent: "#FFC94D", glow: "rgba(255,201,77,.16)", advice: "逐人定制策略,优先挽回临期权益;切忌群发打扰,一条走心的手写消息胜过十张券。" },
+  active: { label: "活跃街区", desc: "30 天内有到店,关系健康", accent: "#3ECF8E", glow: "rgba(62,207,142,.13)", advice: "维持关怀节奏,重点做二单转化与转介绍;新村民 15 天未复购就及时轻触达。" },
+  new: { label: "新会员村", desc: "入会 90 天内,二单转化是关键", accent: "#4ECFE0", glow: "rgba(78,207,224,.13)", advice: "首单体验已被记住,二单转化靠「被认出来」:到店时叫出名字,聊上次的款式。" },
+  sleeping: { label: "沉睡森林", desc: "35 天以上未到店,正在打瞌睡", accent: "#7C6CFF", glow: "rgba(124,108,255,.14)", advice: "瞌睡期用新色板和轻内容唤回;80 天以上直接上「权益提醒+优惠券」组合拳。" },
+  risk: { label: "风险警戒区", desc: "流失风险高,需要立刻行动", accent: "#FF5F7E", glow: "rgba(255,95,126,.14)", advice: "老板娘亲自回访优先于任何机器话术;先修复关系,再谈消费。" },
 };
 
 export const ZONE_ORDER: Zone[] = ["premium", "active", "new", "sleeping", "risk"];

@@ -85,6 +85,7 @@ export const DASHBOARD: DashboardData = {
     totalMembers: 2800,
     activeMembers: 1860,
     sleepingMembers: 620,
+    premiumMembers: 96,
     highRiskMembers: 120,
     awakenedThisMonth: 86,
     monthCost: 328,

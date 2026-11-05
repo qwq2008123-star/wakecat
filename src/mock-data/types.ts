@@ -127,6 +127,7 @@ export interface DashboardData {
     totalMembers: number;
     activeMembers: number;
     sleepingMembers: number;
+    premiumMembers: number;
     highRiskMembers: number;
     awakenedThisMonth: number;
     monthCost: number;
