@@ -29,7 +29,7 @@ export function SectionTitle({ children, right }: { children: ReactNode; right?:
 }
 
 export function StatTile({ label, value, sub, accent }: {
-  label: string; value: string | number; sub?: string; accent?: string;
+  label: string; value: string | number; sub?: ReactNode; accent?: string;
 }) {
   return (
     <div className="surface p-4 min-w-0">

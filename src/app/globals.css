@@ -141,6 +141,20 @@ body {
 @keyframes spin-slow { to { transform: rotate(360deg); } }
 @keyframes bob { 0%,100% { transform: translateY(0) rotate(-1.2deg); } 50% { transform: translateY(-2.5px) rotate(1.2deg); } }
 @keyframes pulse-ring { 0% { transform: scale(.92); opacity: .8; } 100% { transform: scale(1.25); opacity: 0; } }
+@keyframes screenbar { 0%,100% { transform: scaleY(.35); } 50% { transform: scaleY(1); } }
+@keyframes scanline { 0% { transform: translateY(-8px); opacity: 0; } 30% { opacity: .9; } 100% { transform: translateY(30px); opacity: 0; } }
+@keyframes msgpop { 0% { transform: translateY(4px) scale(.85); opacity: 0; } 25% { transform: none; opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-4px); } }
+@keyframes firefly { 0%,100% { opacity: .15; transform: translate(0,0); } 50% { opacity: .9; transform: translate(4px,-7px); } }
+@keyframes sparkle { 0%,100% { opacity: .1; transform: scale(.7) rotate(0deg); } 50% { opacity: .95; transform: scale(1.15) rotate(18deg); } }
+@keyframes holo-in { from { opacity: 0; transform: translateY(6px) scale(.92); } to { opacity: 1; transform: none; } }
+@keyframes ticker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+
+.anim-screenbar { animation: screenbar 1.6s ease-in-out infinite; transform-origin: bottom; transform-box: fill-box; }
+.anim-scanline { animation: scanline 2.2s linear infinite; }
+.anim-msgpop { animation: msgpop 2.8s ease-in-out infinite; }
+.anim-firefly { animation: firefly 3.6s ease-in-out infinite; }
+.anim-sparkle { animation: sparkle 2.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.anim-holo { animation: holo-in .5s ease both; }
 
 .anim-floaty { animation: floaty 5s ease-in-out infinite; }
 .anim-bob { animation: bob 2.6s ease-in-out infinite; }

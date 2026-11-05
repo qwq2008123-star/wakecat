@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Search, SlidersHorizontal } from "lucide-react";
 import CatCharacter from "@/components/world/CatCharacter";
 import MemberProfileDrawer from "@/components/world/MemberProfileDrawer";
+import ZoneBackdrop from "@/components/world/ZoneBackdrop";
 import { DemoTag, PageHeader } from "@/components/world/ui";
 import { dataProvider } from "@/lib/data-provider";
 import { MemberCatView, Zone } from "@/mock-data/types";
@@ -95,8 +96,9 @@ export default function MembersPage() {
               <span className="text-[12px]" style={{ color: "var(--ink-2)" }}>{meta.desc}</span>
               <span className="tag ml-auto">{list.length} 只</span>
             </div>
-            {/* 猫群:错落排布 */}
-            <div className="surface relative overflow-hidden px-5 pt-6 pb-5 min-h-[168px]">
+            {/* 猫群:错落排布 + 街区布景 */}
+            <div className="surface relative overflow-hidden px-5 pt-8 pb-6 min-h-[172px]">
+              <ZoneBackdrop zone={z} />
               <div className="absolute left-0 right-0 bottom-0 h-12" style={{ background: `linear-gradient(180deg, transparent, ${meta.glow})` }} />
               {list.length === 0 ? (
                 <div className="py-10 text-center text-[13px]" style={{ color: "var(--ink-3)" }}>这个街区暂时没有匹配的会员</div>
