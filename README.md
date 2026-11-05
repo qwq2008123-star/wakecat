@@ -1,36 +1,62 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+<div align="center">
 
-## Getting Started
+# 🐱 WAKECAT 醒醒喵
 
-First, run the development server:
+**老板负责经营店铺,醒醒喵负责把老顾客找回来。**
+
+一支 AI 猫咪销售团队,帮助美甲店、美容店等小微商家唤醒沉睡会员。
+
+福州高校 AI 黑客松 · 赛道一「AI+商业」参赛作品
+
+</div>
+
+## 这是什么
+
+WAKECAT 不是传统 CRM,也不是聊天机器人套壳——它是一支**AI 员工团队**:
+
+| 员工 | 职责 |
+|---|---|
+| 🐱 喵老板 | 总控:理解经营目标,拆解任务,验收汇总 |
+| 🔍 侦探喵 | 会员数据体检:RFM 分群、沉睡识别、流失风险 |
+| 🧠 军师喵 | 一对一唤醒策略:优惠券 / 新品 / 权益提醒 / 轻回访 |
+| 💌 销售喵 | 个性化消息生成与触达,回复意图跟进 |
+| 🧮 财务喵 | 成本、回流、增量利润,策略 ROI 复盘 |
+
+每位会员是一只猫:她来店里,猫就精神;她沉默,猫就打盹、冬眠。**猫咪状态是会员关系的可视化。**
+
+## 功能页面
+
+- **经营驾驶舱** — AI 猫咪办公室:员工工位、数据终端、状态动画全部由任务状态驱动
+- **AI 员工中心** — 每位员工的工作台、工具调用区、演示对话窗口
+- **会员宇宙** — 高价值庄园 / 活跃街区 / 新会员村 / 沉睡森林 / 风险警戒区
+- **任务大厅** — AI 立项 → 商家审批 → 执行 → 复盘的完整状态机
+- **记忆博物馆** — 每条 AI 记忆都带数据来源,禁止编造
+- **营销实验室 / 收益中心** — 策略 ROI 对比、实际 vs 预测分色的经营图表
+
+## 技术栈
+
+Next.js 16 (App Router) · TypeScript · Tailwind CSS · Framer Motion · Recharts · Lucide · Drizzle ORM + SQLite(后端已就绪)
+
+## 快速开始
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+pnpm dev        # 开发模式 http://localhost:3000
+pnpm build && pnpm start -p 3100   # 生产模式
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 数据说明
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- 当前运行在**第一阶段 UI 演示模式**:数据来自 `src/mock-data/`,界面统一标注「演示」
+- 数据访问通过 `src/lib/data-provider.ts` 接口隔离,第二阶段切换 Supabase 实现时 UI 零改动
+- 仓库内已包含一套跑通的真后端(SQLite 播种数据、GLM function-calling Agent、审批闸门),见 `src/lib/` 与 `src/app/api/`,作为第二阶段接入基础
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 路线图
 
-## Learn More
+- [x] 第一阶段:猫咪 AI 公司 UI 世界
+- [ ] 第二阶段:Supabase 真实数据 + GLM 驱动的真实 Agent 闭环
+- [ ] 第三阶段:企微真实触达通道
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+*本仓库所有经营数据均为演示数据,已明确标注,不伪装成真实经营结果。*
