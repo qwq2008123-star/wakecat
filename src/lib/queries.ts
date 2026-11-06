@@ -255,16 +255,19 @@ export async function getRealDashboard(storeId: string): Promise<RealDashboard> 
     SELECT l.*, t.title FROM task_logs l JOIN tasks t ON t.id = l.task_id
     WHERE t.store_id = ? ORDER BY l.created_at DESC LIMIT 8
   `, storeId);
+  // 本月起点(本地时区月初,转为与库内一致的 UTC ISO 字符串)
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
   const fin = get(`
     SELECT
       COALESCE(SUM(CASE WHEN type='cost' THEN amount END),0) AS cost,
       COALESCE(SUM(CASE WHEN type='revenue' THEN amount END),0) AS revenue
-    FROM finance_entries WHERE store_id = ?
-  `, storeId) as { cost: number; revenue: number };
+    FROM finance_entries WHERE store_id = ? AND occurred_at >= ?
+  `, storeId, monthStart) as { cost: number; revenue: number };
   const awakened = get(`
     SELECT COUNT(DISTINCT member_id) AS c FROM appointments
-    WHERE store_id = ? AND status = 'visited' AND created_at > datetime('now','-30 day')
-  `, storeId) as { c: number };
+    WHERE store_id = ? AND status = 'visited' AND created_at >= ?
+  `, storeId, monthStart) as { c: number };
   const lastReport = get(`
     SELECT result_json, title, status FROM tasks
     WHERE store_id = ? AND status='completed' ORDER BY updated_at DESC LIMIT 1
@@ -293,7 +296,8 @@ export async function getRealDashboard(storeId: string): Promise<RealDashboard> 
       activeMembers: active,
       sleepingMembers: drowsy + hib,
       premiumMembers: premium,
-      highRiskMembers: sick + hib,
+      // 各状态互斥:活跃 + 沉睡 + 临期卡 = 会员总数
+      highRiskMembers: sick,
       awakenedThisMonth: awakened.c,
       monthCost: Math.round(fin.cost),
       monthRevenue: Math.round(fin.revenue),

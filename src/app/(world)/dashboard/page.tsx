@@ -59,7 +59,7 @@ export default function DashboardPage() {
   const health = [
     { label: "活跃", v: k.activeMembers, color: "var(--green)" },
     { label: "沉睡", v: k.sleepingMembers, color: "var(--brand-2)" },
-    { label: "高风险", v: k.highRiskMembers, color: "var(--red)" },
+    { label: "临期卡", v: k.highRiskMembers, color: "var(--red)" },
   ];
   const healthTotal = health.reduce((s, x) => s + x.v, 0);
 
@@ -111,7 +111,7 @@ export default function DashboardPage() {
           </div>
           <div className="mt-2.5 flex h-2.5 rounded-full overflow-hidden gap-0.5">
             {health.map((h) => (
-              <motion.div key={h.label} initial={{ width: 0 }} animate={{ width: `${(h.v / healthTotal) * 100}%` }} transition={{ duration: 0.7 }}
+              <motion.div key={h.label} initial={{ width: 0 }} animate={{ width: `${healthTotal > 0 ? (h.v / healthTotal) * 100 : 0}%` }} transition={{ duration: 0.7 }}
                 style={{ background: h.color, borderRadius: 4 }} />
             ))}
           </div>

@@ -110,9 +110,9 @@ export default function MembersPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5">
         <StatTile label="总会员数" value={k.totalMembers.toLocaleString()} sub="喵屋美甲全量档案" />
         <StatTile label="活跃会员" value={k.activeMembers.toLocaleString()} accent="var(--green)" sub="30 天内有到店" />
-        <StatTile label="沉睡会员" value={k.sleepingMembers.toLocaleString()} accent="var(--brand-2)" sub="35 天以上未到店" />
+        <StatTile label="沉睡会员" value={k.sleepingMembers.toLocaleString()} accent="var(--brand-2)" sub="30 天以上未到店" />
         <StatTile label="高价值会员" value={k.premiumMembers.toLocaleString()} accent="var(--yellow)" sub="庄园常住居民" />
-        <StatTile label="高流失风险" value={k.highRiskMembers.toLocaleString()} accent="var(--red)" sub="需要立刻行动" />
+        <StatTile label="临期卡会员" value={k.highRiskMembers.toLocaleString()} accent="var(--red)" sub="会员卡快过期" />
       </div>
 
       {/* 搜索与筛选(常驻) */}
@@ -238,7 +238,7 @@ export default function MembersPage() {
 
       {/* 档案抽屉 */}
       <AnimatePresence>
-        {selected && <MemberProfileDrawer member={selected} onClose={() => setSelected(null)} />}
+        {selected && <MemberProfileDrawer key={selected.id} member={selected} onClose={() => setSelected(null)} />}
       </AnimatePresence>
     </div>
   );

@@ -47,9 +47,11 @@ pnpm build && pnpm start -p 3100   # 生产模式
 
 ## 数据说明
 
-- 当前运行在**第一阶段 UI 演示模式**:数据来自 `src/mock-data/`,界面统一标注「演示」
+- 驾驶舱、会员、记忆、任务、收益数据读取本地 SQLite(`data/wakecat.db`,播种 60 名演示会员),经 `/api/data/*` 提供
+- AI 员工设定(`employees`)与营销实验(`campaigns`)仍为 `src/mock-data/` 中的演示数据,界面已标注「演示」
+- 未配置 LLM API Key 时由规则引擎接管 Agent;触达通道为 `wecom-mock` 模拟企微
 - 数据访问通过 `src/lib/data-provider.ts` 接口隔离,第二阶段切换 Supabase 实现时 UI 零改动
-- 仓库内已包含一套跑通的真后端(SQLite 播种数据、GLM function-calling Agent、审批闸门),见 `src/lib/` 与 `src/app/api/`,作为第二阶段接入基础
+- 本地演示未登录时自动以店长身份操作(`src/lib/session.ts`),正式部署前必须改为强制登录
 
 ## 路线图
 

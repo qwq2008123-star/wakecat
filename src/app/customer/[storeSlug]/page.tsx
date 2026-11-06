@@ -20,7 +20,7 @@ export default function CustomerPage({ params }: { params: Promise<{ storeSlug: 
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [visitorId, setVisitorId] = useState("");
+  const visitorIdRef = useRef("");
   const [bound, setBound] = useState<{ name: string; level: string } | null>(null);
   const [showBind, setShowBind] = useState(false);
   const [code, setCode] = useState("");
@@ -33,7 +33,7 @@ export default function CustomerPage({ params }: { params: Promise<{ storeSlug: 
       vid = crypto.randomUUID();
       localStorage.setItem("wxcat_visitor", vid);
     }
-    setVisitorId(vid);
+    visitorIdRef.current = vid;
     fetch(`/api/customer/${storeSlug}/bind?visitorId=${vid}`)
       .then((r) => r.json())
       .then((j) => setBound(j.member));
@@ -49,7 +49,7 @@ export default function CustomerPage({ params }: { params: Promise<{ storeSlug: 
     try {
       const r = await fetch(`/api/customer/${storeSlug}/chat`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ visitorId, message: t }),
+        body: JSON.stringify({ visitorId: visitorIdRef.current, message: t }),
       });
       const j = await r.json();
       setMsgs((m) => [...m, { from: "emp", text: j.text ?? j.error ?? "…", cards: j.cards, quick: j.quickReplies }]);
@@ -67,7 +67,7 @@ export default function CustomerPage({ params }: { params: Promise<{ storeSlug: 
     setBindErr(null);
     const r = await fetch(`/api/customer/${storeSlug}/bind`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ visitorId, memberCode: code }),
+      body: JSON.stringify({ visitorId: visitorIdRef.current, memberCode: code }),
     });
     const j = await r.json();
     if (!r.ok) { setBindErr(j.error); return; }

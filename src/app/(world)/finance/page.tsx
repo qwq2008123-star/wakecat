@@ -41,7 +41,7 @@ export default function FinancePage() {
         <StatTile label="营销成本" value={`¥${f.cost.toLocaleString()}`} sub="券 + 触达" accent="var(--red)" />
         <StatTile label="实际消费" value={`¥${f.consumption.toLocaleString()}`} sub="唤回到店消费" accent="var(--green)" />
         <StatTile label="增量利润" value={`¥${f.profit.toLocaleString()}`} sub="消费 − 成本" accent="var(--brand-2)" />
-        <StatTile label="投入产出比" value={`${(f.consumption / f.cost).toFixed(1)} 倍`} sub="本月全策略均值" accent="var(--yellow)" />
+        <StatTile label="投入产出比" value={f.cost > 0 ? `${(f.consumption / f.cost).toFixed(1)} 倍` : "—"} sub="本月全策略均值" accent="var(--yellow)" />
       </div>
 
       {/* 漏斗 + 每一环的猫员工 */}

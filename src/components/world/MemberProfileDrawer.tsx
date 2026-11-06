@@ -40,9 +40,8 @@ export default function MemberProfileDrawer({ member, onClose }: { member: Membe
   const [analysis, setAnalysis] = useState<ReturnType<typeof analyzeMember> | null>(null);
 
   useEffect(() => {
+    // 切换会员时父组件通过 key 重新挂载,分析状态自然重置
     dataProvider.getMemories(member.id).then(setMemories);
-    // 每次切换会员重置分析
-    setAnalysis(null); setAnalyzing(false);
   }, [member.id]);
 
   const runAnalysis = () => {
