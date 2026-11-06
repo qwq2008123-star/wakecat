@@ -259,7 +259,8 @@ async function runAgentStage(opts: {
   let payload: Record<string, unknown> = {};
   try { payload = JSON.parse(extractJson(result.text) || "{}"); } catch { payload = { note: result.text.slice(0, 500) }; }
   ctx.emit({ type: "stage", stage, label, status: "ok", engine: "llm" });
-  return { payload, summary: result.text.slice(0, 400), engine: "llm" };
+  const cleanSummary = result.text.replace(/```(?:json)?/g, "").trim();
+  return { payload, summary: cleanSummary.slice(0, 400), engine: "llm" };
 }
 
 function extractJson(text: string): string | null {
@@ -382,6 +383,31 @@ export async function runStrategist(ctx: Ctx) {
       return { payload: { strategySummary: { count, totalCost: cost, byKind } }, summary: `为 ${count} 位会员制定了策略,预估成本 ¥${cost}。` };
     },
   });
+  // 产出校验:LLM 若只说话不动手(未调用 propose_strategy),规则引擎补齐并诚实留痕
+  const strategyCount = sqlite.prepare(
+    "SELECT COUNT(*) as c FROM strategies WHERE task_id = ?"
+  ).get(ctx.taskId) as { c: number };
+  if (strategyCount.c === 0) {
+    await appendLog({
+      taskId: ctx.taskId, agent: "军师喵", step: "LLM 未产出策略,规则引擎补齐", status: "error",
+      message: "大模型未调用 propose_strategy 工具,已降级到规则引擎生成策略(非静默)",
+    });
+    ctx.emit({ type: "log", agent: "军师喵", step: "降级", message: "LLM 未产出策略,规则引擎补齐(诚实降级)" });
+    const t = await getTask(ctx.taskId);
+    const analysis = JSON.parse(t?.payloadJson || "{}").analysis;
+    const ops = analysis?.opportunities ?? [];
+    const rows = rulesStrategies(ctx.storeId, ctx.taskId, ops);
+    for (const r of rows) {
+      await db.insert(strategies).values({
+        id: rid("st"), taskId: ctx.taskId, memberId: r.memberId,
+        kind: r.kind, content: r.content, channel: "wecom-mock",
+        predictedCost: r.cost, predictedUplift: Math.round(r.uplift),
+        reason: r.reason, createdAt: nowIso(),
+      });
+      cost += r.cost;
+    }
+    await updateTask(ctx.taskId, { costEstimate: cost });
+  }
   await updateTask(ctx.taskId, { costEstimate: cost });
   return res;
 }
@@ -415,6 +441,7 @@ export async function runSeller(ctx: Ctx, user: SessionUserLike) {
         throw new Error(`未知工具 ${name}`);
     }
   };
+  let rulesRan = false;
   const res = await runAgentStage({
     ctx, agent: "销售喵", stage: "sell", label: "销售喵·执行触达",
     system: `你是「销售喵」,替美甲师小林给老会员写一对一企微消息并真实发送(演示通道)。
@@ -449,6 +476,29 @@ export async function runSeller(ctx: Ctx, user: SessionUserLike) {
       };
     },
   });
+  // 产出校验:LLM 若一条消息都没发,规则引擎补齐并诚实留痕
+  const msgCount = sqlite.prepare(
+    "SELECT COUNT(*) as c FROM outreach_messages WHERE task_id = ?"
+  ).get(ctx.taskId) as { c: number };
+  if (msgCount.c === 0) {
+    await appendLog({
+      taskId: ctx.taskId, agent: "销售喵", step: "LLM 未产出触达,规则引擎补齐", status: "error",
+      message: "大模型未调用 send_message 工具,已降级到规则引擎执行(非静默)",
+    });
+    rulesRan = true;
+  }
+  if (rulesRan) {
+    const rows = sqlite.prepare(`
+      SELECT s.id, s.kind, s.content, m.id AS member_id, m.name
+      FROM strategies s JOIN members m ON m.id = s.member_id WHERE s.task_id = ?
+    `).all(ctx.taskId) as Record<string, unknown>[];
+    for (const r of rows) {
+      const body = rulesMessage({ memberName: r.name as string, kind: r.kind as string, content: r.content as string });
+      const out = await queueAndSend(user, ctx.taskId, r.id as string);
+      sent.total++;
+      if (out.ok) sent.ok++; else sent.failed++;
+    }
+  }
   return res;
 }
 
