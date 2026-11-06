@@ -301,3 +301,159 @@ export const campaignMembers = sqliteTable("campaign_members", {
   groupType: text("group_type").notNull().default("experiment"),
   attributionStatus: text("attribution_status").notNull().default("pending"),
 });
+
+/* ---------- AI 闺蜜猫咪(阶段2) ---------- */
+export const cats = sqliteTable("cats", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull(),
+  memberId: text("member_id").notNull(),
+  name: text("name").notNull(),
+  personality: text("personality").notNull().default("温柔体贴,记得住你说过的话"),
+  colorway: text("colorway").notNull().default("orange"),
+  energy: integer("energy").notNull().default(60),
+  bond: integer("bond").notNull().default(10),
+  level: integer("level").notNull().default(1),
+  stage: text("stage").notNull().default("active"),
+  decorationsJson: text("decorations_json").notNull().default("[]"),
+  lastActiveAt: text("last_active_at").notNull(),
+  adoptedAt: text("adopted_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const userMemories = sqliteTable("user_memories", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull(),
+  userId: text("user_id").notNull(),
+  catId: text("cat_id").notNull(),
+  memoryType: text("memory_type").notNull(), // long_term_preference | short_term_interest | behavior | transaction | interaction
+  category: text("category").notNull(),
+  attribute: text("attribute").notNull(),
+  value: text("value").notNull(),
+  confidence: real("confidence").notNull().default(0.8),
+  source: text("source").notNull(), // chat | image | order | correction | system
+  sourceRef: text("source_ref"),
+  userConfirmed: integer("user_confirmed").notNull().default(0),
+  visibility: text("visibility").notNull().default("user_visible"),
+  status: text("status").notNull().default("active"),
+  expiresAt: text("expires_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const memoryFeedback = sqliteTable("memory_feedback", {
+  id: text("id").primaryKey(),
+  memoryId: text("memory_id").notNull(),
+  userId: text("user_id").notNull(),
+  feedback: text("feedback").notNull(), // confirmed | corrected | deleted
+  oldValue: text("old_value"),
+  newValue: text("new_value"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const userPreferences = sqliteTable("user_preferences", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull(),
+  userId: text("user_id").notNull(),
+  category: text("category").notNull(),
+  attribute: text("attribute").notNull(),
+  value: text("value").notNull(),
+  confidence: real("confidence").notNull().default(0.8),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const inspirationThemes = sqliteTable("inspiration_themes", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  auto: integer("auto").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+});
+
+export const inspirationItems = sqliteTable("inspiration_items", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull(),
+  userId: text("user_id").notNull(),
+  themeId: text("theme_id"),
+  title: text("title").notNull(),
+  note: text("note"),
+  imagePath: text("image_path"),
+  productId: text("product_id"),
+  serviceId: text("service_id"),
+  styleTagsJson: text("style_tags_json").notNull().default("[]"),
+  catNote: text("cat_note"),
+  source: text("source").notNull().default("upload"),
+  createdAt: text("created_at").notNull(),
+  deletedAt: text("deleted_at"),
+});
+
+export const products = sqliteTable("products", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  imagePath: text("image_path"),
+  price: real("price"),
+  status: text("status").notNull().default("active"),
+  source: text("source").notNull().default("merchant"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const productTags = sqliteTable("product_tags", {
+  id: text("id").primaryKey(),
+  productId: text("product_id").notNull(),
+  tag: text("tag").notNull(),
+});
+
+export const recommendationCandidates = sqliteTable("recommendation_candidates", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull(),
+  userId: text("user_id").notNull(),
+  productId: text("product_id"),
+  serviceId: text("service_id"),
+  score: real("score").notNull().default(0),
+  reason: text("reason"),
+  status: text("status").notNull().default("candidate"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const recommendationEvents = sqliteTable("recommendation_events", {
+  id: text("id").primaryKey(),
+  candidateId: text("candidate_id").notNull(),
+  userId: text("user_id").notNull(),
+  eventType: text("event_type").notNull(),
+  channel: text("channel"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const energyTransactions = sqliteTable("energy_transactions", {
+  id: text("id").primaryKey(),
+  catId: text("cat_id").notNull(),
+  userId: text("user_id").notNull(),
+  action: text("action").notNull(),
+  source: text("source").notNull(),
+  delta: integer("delta").notNull(),
+  relatedType: text("related_type"),
+  relatedId: text("related_id"),
+  dedupeKey: text("dedupe_key").notNull().unique(),
+  reversed: integer("reversed").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+});
+
+export const catEnergyLogs = sqliteTable("cat_energy_logs", {
+  id: text("id").primaryKey(),
+  catId: text("cat_id").notNull(),
+  date: text("date").notNull(),
+  delta: integer("delta").notNull(),
+  reason: text("reason").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+export const catBondLogs = sqliteTable("cat_bond_logs", {
+  id: text("id").primaryKey(),
+  catId: text("cat_id").notNull(),
+  userId: text("user_id").notNull(),
+  delta: integer("delta").notNull(),
+  reason: text("reason").notNull(),
+  createdAt: text("created_at").notNull(),
+});

@@ -279,4 +279,152 @@ CREATE TABLE IF NOT EXISTS campaign_members (
   group_type TEXT NOT NULL DEFAULT 'experiment',
   attribution_status TEXT NOT NULL DEFAULT 'pending'
 );
+
+/* ---------- AI 闺蜜猫咪(阶段2) ---------- */
+CREATE TABLE IF NOT EXISTS cats (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL,
+  member_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  personality TEXT NOT NULL DEFAULT '温柔体贴,记得住你说过的话',
+  colorway TEXT NOT NULL DEFAULT 'orange',
+  energy INTEGER NOT NULL DEFAULT 60,
+  bond INTEGER NOT NULL DEFAULT 10,
+  level INTEGER NOT NULL DEFAULT 1,
+  stage TEXT NOT NULL DEFAULT 'active',
+  decorations_json TEXT NOT NULL DEFAULT '[]',
+  last_active_at TEXT NOT NULL,
+  adopted_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(store_id, member_id)
+);
+CREATE TABLE IF NOT EXISTS user_memories (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  cat_id TEXT NOT NULL,
+  memory_type TEXT NOT NULL,
+  category TEXT NOT NULL,
+  attribute TEXT NOT NULL,
+  value TEXT NOT NULL,
+  confidence REAL NOT NULL DEFAULT 0.8,
+  source TEXT NOT NULL,
+  source_ref TEXT,
+  user_confirmed INTEGER NOT NULL DEFAULT 0,
+  visibility TEXT NOT NULL DEFAULT 'user_visible',
+  status TEXT NOT NULL DEFAULT 'active',
+  expires_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_um_user ON user_memories(user_id, status);
+CREATE TABLE IF NOT EXISTS memory_feedback (
+  id TEXT PRIMARY KEY,
+  memory_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  feedback TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS user_preferences (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  category TEXT NOT NULL,
+  attribute TEXT NOT NULL,
+  value TEXT NOT NULL,
+  confidence REAL NOT NULL DEFAULT 0.8,
+  updated_at TEXT NOT NULL,
+  UNIQUE(user_id, category, attribute)
+);
+CREATE TABLE IF NOT EXISTS inspiration_themes (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  auto INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS inspiration_items (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  theme_id TEXT,
+  title TEXT NOT NULL,
+  note TEXT,
+  image_path TEXT,
+  product_id TEXT,
+  service_id TEXT,
+  style_tags_json TEXT NOT NULL DEFAULT '[]',
+  cat_note TEXT,
+  source TEXT NOT NULL DEFAULT 'upload',
+  created_at TEXT NOT NULL,
+  deleted_at TEXT
+);
+CREATE TABLE IF NOT EXISTS products (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  image_path TEXT,
+  price REAL,
+  status TEXT NOT NULL DEFAULT 'active',
+  source TEXT NOT NULL DEFAULT 'merchant',
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS product_tags (
+  id TEXT PRIMARY KEY,
+  product_id TEXT NOT NULL,
+  tag TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS recommendation_candidates (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  product_id TEXT,
+  service_id TEXT,
+  score REAL NOT NULL DEFAULT 0,
+  reason TEXT,
+  status TEXT NOT NULL DEFAULT 'candidate',
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS recommendation_events (
+  id TEXT PRIMARY KEY,
+  candidate_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  channel TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS energy_transactions (
+  id TEXT PRIMARY KEY,
+  cat_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  source TEXT NOT NULL,
+  delta INTEGER NOT NULL,
+  related_type TEXT,
+  related_id TEXT,
+  dedupe_key TEXT UNIQUE,
+  reversed INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS cat_energy_logs (
+  id TEXT PRIMARY KEY,
+  cat_id TEXT NOT NULL,
+  date TEXT NOT NULL,
+  delta INTEGER NOT NULL,
+  reason TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(cat_id, date)
+);
+CREATE TABLE IF NOT EXISTS cat_bond_logs (
+  id TEXT PRIMARY KEY,
+  cat_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  delta INTEGER NOT NULL,
+  reason TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
 `;

@@ -1,4 +1,5 @@
 import { ensureSeeded, ensureSalesSeed } from "./seed-data";
+import { startScheduler } from "./scheduler";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -11,6 +12,7 @@ export function ensureBootstrap(): Promise<void> {
     globalThis.__wxCatBootstrapped = (async () => {
       ensureSeeded();
       ensureSalesSeed(); // 服务目录/排班/授权账本:可对旧库增量补充
+      startScheduler();  // 后台调度:猫咪每日衰减 + 机会池扫描(事件驱动 + 定时)
     })();
   }
   return globalThis.__wxCatBootstrapped;
