@@ -92,7 +92,34 @@ export async function queueAndSend(user: SessionUserLike, taskId: string, strate
   const dup = sqlite.prepare(
     "SELECT id FROM outreach_messages WHERE task_id = ? AND strategy_id = ?"
   ).get(taskId, strategyId) as { id: string } | undefined;
-  if (dup) throw new HttpError(409, `该策略已触达过(消息 ${dup.id}),拒绝重复发送`);
+  if (dup) {
+    await appendLog({
+      taskId, agent: "销售喵", step: "幂等拦截", status: "error",
+      message: `该策略已触达过(消息 ${dup.id}),跳过重复发送`,
+    });
+    return { msgId: dup.id, ok: false, failureReason: "重复触达被幂等拦截" };
+  }
+
+  const gateReject = async (gate: string, reason: string) => {
+    // 业务规则拦截:创建失败记录(诚实展示),审计留痕,调用方跳过继续
+    const msgId = rid("om");
+    await db.insert(outreachMessages).values({
+      id: msgId, taskId, strategyId, memberId: st.memberId,
+      channel: st.channel, body: st.content, status: "failed",
+      failureReason: reason, engine: t.engine, createdAt: now(),
+    });
+    await db.insert(messageEventsTable).values({
+      id: rid("me"), messageId: msgId, eventType: "blocked",
+      metaJson: JSON.stringify({ gate, reason }), occurredAt: now(),
+    });
+    await audit(user.name, `outreach.blocked_${gate}`, st.memberId, { taskId, reason });
+    await appendLog({
+      taskId, agent: "销售喵", step: `触达被业务规则拦截(${gate})`, status: "error",
+      toolName: "policy_gate", toolOutput: { gate, reason },
+      message: reason,
+    });
+    return { msgId, ok: false as const, failureReason: reason };
+  };
 
   // 闸门 1(L3):客户授权账本——退订立即生效,不做任何"应该不介意"判断
   const consent = sqlite.prepare(`
@@ -100,12 +127,7 @@ export async function queueAndSend(user: SessionUserLike, taskId: string, strate
     WHERE member_id = ? AND purpose='marketing' ORDER BY updated_at DESC LIMIT 1
   `).get(st.memberId) as { status: string; source: string } | undefined;
   if (consent?.status === "unsubscribed") {
-    await audit(user.name, "outreach.blocked_consent", st.memberId, { taskId });
-    await appendLog({
-      taskId, agent: "销售喵", step: "触达被业务规则拦截", status: "error",
-      message: `该会员已退订营销消息(来源:${consent.source}),硬拦截,不发送`,
-    });
-    throw new HttpError(403, "该会员已退订营销消息,系统硬拦截");
+    return await gateReject("consent", `已退订营销消息(来源:${consent.source}),授权账本硬拦截`);
   }
 
   // 闸门 2(L3):触达频次——14 天内已发 ≥2 条则冷却
@@ -115,12 +137,7 @@ export async function queueAndSend(user: SessionUserLike, taskId: string, strate
       AND created_at > datetime('now','-14 day')
   `).get(st.memberId) as { c: number };
   if (recent.c >= 2) {
-    await audit(user.name, "outreach.blocked_frequency", st.memberId, { taskId, recent: recent.c });
-    await appendLog({
-      taskId, agent: "销售喵", step: "触达被业务规则拦截", status: "error",
-      message: `该会员 14 天内已被触达 ${recent.c} 次,触发频次冷却`,
-    });
-    throw new HttpError(403, `触达频次超限:该会员 14 天内已触达 ${recent.c} 次`);
+    return await gateReject("frequency", `触达频次超限:14 天内已触达 ${recent.c} 次,进入冷却`);
   }
 
   // 闸门 3(L3):任务预算(若商家目标里声明了 budget)
@@ -130,8 +147,7 @@ export async function queueAndSend(user: SessionUserLike, taskId: string, strate
       "SELECT COALESCE(SUM(amount),0) as s FROM finance_entries WHERE task_id = ? AND type='cost'"
     ).get(taskId) as { s: number };
     if (spent.s + st.predictedCost > payload.budget) {
-      await audit(user.name, "outreach.blocked_budget", taskId, { spent: spent.s, need: st.predictedCost, budget: payload.budget });
-      throw new HttpError(403, `预算超限:已花 ¥${Math.round(spent.s)},本条还需 ¥${st.predictedCost},超出预算 ¥${payload.budget}`);
+      return await gateReject("budget", `预算超限:已花 ¥${Math.round(spent.s)},本条需 ¥${st.predictedCost},超出预算 ¥${payload.budget}`);
     }
   }
 

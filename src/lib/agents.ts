@@ -431,9 +431,17 @@ export async function runSeller(ctx: Ctx, user: SessionUserLike) {
       `).all(ctx.taskId) as Record<string, unknown>[];
       for (const r of rows) {
         const body = rulesMessage({ memberName: r.name as string, kind: r.kind as string, content: r.content as string });
-        const out = await queueAndSend(user, ctx.taskId, r.id as string);
-        sent.total++;
-        if (out.ok) sent.ok++; else sent.failed++;
+        try {
+          const out = await queueAndSend(user, ctx.taskId, r.id as string);
+          sent.total++;
+          if (out.ok) sent.ok++; else sent.failed++;
+        } catch (e) {
+          sent.total++; sent.failed++;
+          await appendLog({
+            taskId: ctx.taskId, agent: "销售喵", step: "单条触达异常,跳过继续", status: "error",
+            message: String(e instanceof Error ? e.message : e),
+          });
+        }
       }
       return {
         payload: { salesSummary: sent },

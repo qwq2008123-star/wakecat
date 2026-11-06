@@ -11,12 +11,14 @@ import { TaskStatus, WakeTask } from "@/mock-data/types";
 import { EMPLOYEE_MAP } from "@/mock-data/employees";
 
 const STATUS_META: Record<TaskStatus, { label: string; cls: string }> = {
+  draft: { label: "草稿", cls: "" },
   pending_approval: { label: "待审批", cls: "tag-yellow" },
   approved: { label: "已批准", cls: "tag-blue" },
   running: { label: "执行中", cls: "tag-brand" },
   paused: { label: "已暂停", cls: "" },
   completed: { label: "已完成", cls: "tag-green" },
   rejected: { label: "已驳回", cls: "tag-red" },
+  failed: { label: "失败", cls: "tag-red" },
 };
 
 const RISK_META = { low: { label: "低风险", cls: "tag-green" }, mid: { label: "中风险", cls: "tag-yellow" }, high: { label: "高风险", cls: "tag-red" } } as const;

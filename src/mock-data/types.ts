@@ -61,7 +61,7 @@ export interface Employee {
 }
 
 export type TaskStatus =
-  | "pending_approval" | "approved" | "running" | "paused" | "completed" | "rejected";
+  | "draft" | "pending_approval" | "approved" | "running" | "paused" | "completed" | "rejected" | "failed";
 
 export interface WakeTask {
   id: string;
