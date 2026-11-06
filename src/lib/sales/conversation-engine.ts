@@ -40,17 +40,66 @@ interface PendingContext {
   slots?: { date: string; weekday: string; staff: string; time: string }[];
 }
 
+/* ---------- 工具:日期 / 星期 / 序号解析 ---------- */
+const pad2 = (n: number) => String(n).padStart(2, "0");
+/** 店铺本地日期(排班表存的是本地日期,不能用 UTC 的 date('now')) */
+function localDate(offsetDays = 0): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+/** 「今天/明天/后天」或「11-07」「11月7日」→ YYYY-MM-DD */
+function parseDate(text: string): string | undefined {
+  if (/今天/.test(text)) return localDate(0);
+  if (/明天/.test(text)) return localDate(1);
+  if (/后天/.test(text)) return localDate(2);
+  const m = /(\d{1,2})\s*[-/月]\s*(\d{1,2})/.exec(text);
+  if (!m) return undefined;
+  const mon = Number(m[1]), day = Number(m[2]);
+  if (mon < 1 || mon > 12 || day < 1 || day > 31) return undefined;
+  const today = localDate(0);
+  let year = Number(today.slice(0, 4));
+  if (`${year}-${pad2(mon)}-${pad2(day)}` < today) year += 1; // 已过的日期视为明年
+  return `${year}-${pad2(mon)}-${pad2(day)}`;
+}
+
+/** 必须带「周/星期/礼拜」前缀,避免「等一下」被当成周一 */
+function parseWeekday(text: string): string | undefined {
+  const m = /(?:周|星期|礼拜)([一二三四五六日天])/.exec(text);
+  return m ? `周${m[1] === "天" ? "日" : m[1]}` : undefined;
+}
+
+/** 只认「1」「第2个」「选3」这类明确的序号,不从日期等文字里抓数字 */
+function parseIndex(text: string): number | undefined {
+  const m = /^\s*(?:第|选)?\s*(\d)\s*(?:个|号|项)?\s*$/.exec(text);
+  return m ? Number(m[1]) : undefined;
+}
+
+/** 预算:「150 元」「预算 150」「150 以内/以下/左右」 */
+function parseBudget(text: string): number | undefined {
+  const m = /(\d{2,4})\s*(?:元|块|以内|以下|之内|左右)/.exec(text) ?? /预算[^\d]{0,4}(\d{2,4})/.exec(text);
+  return m ? Number(m[1]) : undefined;
+}
+
+/** 简短的确认语;含否定/换的不算 */
+function isConfirm(text: string): boolean {
+  if (text.length > 12 || /(不|别|换|其他|其它|吗|\?|？|什么|多少|几)/.test(text)) return false;
+  return /(好的|好呀|好啊|可以|行|就这个|就它|确认|没问题|嗯|对|ok|OK|再约)/.test(text);
+}
+
 /* ---------- 工具:真实排班查询 ---------- */
-function getSlots(storeId: string, weekdayFilter?: string): { date: string; weekday: string; staff: string; time: string }[] {
+function getSlots(storeId: string, filter: { weekday?: string; date?: string } = {}): { date: string; weekday: string; staff: string; time: string }[] {
   const rows = sqlite.prepare(`
     SELECT work_date, staff_name, start_at, end_at FROM store_staff_schedules
-    WHERE store_id = ? AND work_date >= date('now') ORDER BY work_date ASC, staff_name ASC LIMIT 40
-  `).all(storeId) as Row[];
+    WHERE store_id = ? AND work_date >= ? ORDER BY work_date ASC, staff_name ASC LIMIT 40
+  `).all(storeId, localDate(0)) as Row[];
   const seen = new Map<string, { date: string; weekday: string; staff: string; time: string }>();
   for (const r of rows) {
     const date = r.work_date as string;
     const wd = WEEKDAYS[new Date(date + "T12:00:00").getDay()];
-    if (weekdayFilter && !wd.includes(weekdayFilter)) continue;
+    if (filter.weekday && wd !== filter.weekday) continue;
+    if (filter.date && date !== filter.date) continue;
     const key = `${date}`;
     if (!seen.has(key)) {
       seen.set(key, { date, weekday: wd, staff: r.staff_name as string, time: `${r.start_at}-${r.end_at}` });
@@ -75,7 +124,7 @@ function getOrCreateConversation(storeId: string, identityId: string, channel: s
 function loadPending(conversationId: string): PendingContext {
   const row = sqlite.prepare(`
     SELECT meta_json FROM conversation_messages
-    WHERE conversation_id = ? AND direction='out' ORDER BY created_at DESC LIMIT 1
+    WHERE conversation_id = ? AND direction='out' ORDER BY created_at DESC, rowid DESC LIMIT 1
   `).get(conversationId) as { meta_json: string } | undefined;
   try {
     const meta = JSON.parse(row?.meta_json || "{}");
@@ -159,13 +208,15 @@ export function handleCustomerMessage(opts: {
     return reply;
   }
 
-  // ③ 上下文:正在选服务
-  if (pending.action === "choose_service" && pending.services) {
-    const idx = text.match(/(\d)/)?.[1];
-    const chosen = pending.services[Number(idx) - 1]
-      ?? pending.services.find((s) => text.includes(s.name.slice(0, 2)));
+  // ③ 上下文:正在选服务(序号 / 服务名 / 「好的就这个」确认第一个推荐)
+  if (pending.action === "choose_service" && pending.services?.length) {
+    const idx = parseIndex(text);
+    const chosen = (idx ? pending.services[idx - 1] : undefined)
+      ?? pending.services.find((s) => text.includes(s.name.slice(0, 2)))
+      ?? (isConfirm(text) ? pending.services[0] : undefined);
     if (chosen) {
-      const slots = getSlots(storeId);
+      // 之前已按日期/星期筛过时段的,沿用筛选结果
+      const slots = pending.slots?.length ? pending.slots : getSlots(storeId);
       const reply: ChatReply = {
         text: `好眼光!「${chosen.name}」¥${chosen.price} · 约 ${chosen.durationMin} 分钟。最近的预约时段如下,选一个方便的~`,
         cards: [{ type: "slots", items: slots }],
@@ -177,12 +228,14 @@ export function handleCustomerMessage(opts: {
     }
   }
 
-  // ④ 上下文:正在选时段 → 真实预约落库
+  // ④ 上下文:正在选时段 → 真实预约落库(日期 > 星期 > 序号;快捷回复「周六(11-07)」按日期匹配)
   if (pending.action === "choose_slot" && pending.chosen && pending.slots) {
-    const idx = text.match(/(\d)/)?.[1];
-    const wdMatch = WEEKDAYS.find((w) => text.includes(w.slice(1)));
-    const slot = (Number(idx) ? pending.slots[Number(idx) - 1] : undefined)
-      ?? pending.slots.find((s) => (wdMatch ? s.weekday === wdMatch : false));
+    const date = parseDate(text);
+    const wd = parseWeekday(text);
+    const idx = parseIndex(text);
+    const slot = (date ? pending.slots.find((s) => s.date === date) : undefined)
+      ?? (wd ? pending.slots.find((s) => s.weekday === wd) : undefined)
+      ?? (idx ? pending.slots[idx - 1] : undefined);
     if (slot) {
       const apptId = createAppointment({
         storeId, memberId: member?.id ?? null,
@@ -200,30 +253,65 @@ export function handleCustomerMessage(opts: {
     }
   }
 
-  // ⑤ 意图:预约(直接给排班)
-  if (/(预约|有空|时间|几点|排班)/.test(text)) {
-    const slots = getSlots(storeId, /(周[一二三四五六日])/.exec(text)?.[1]?.replace("周", "周"));
-    const reply: ChatReply = {
-      text: member
-        ? `${greetName},最近的可预约时段如下(都来自店里真实排班)。选定后我直接帮你约上~`
-        : "最近的可预约时段如下。绑定会员后我还能记住你的偏好哦~",
-      cards: [{ type: "slots", items: slots }],
-      quickReplies: slots.slice(0, 3).map((s) => `${s.weekday}(${s.date.slice(5)})`),
-      stage: "booking_intent",
-    };
-    saveOut(convId, reply, { action: "choose_slot", chosen: undefined, slots });
-    // 选时段前需要先定服务:给默认热门服务候选
-    if (!pending.chosen) {
-      const rec = recommendServices({ storeId, favoriteService: member?.favoriteService ?? null, limit: 1 });
-      if (rec[0]) {
-        const follow: ChatReply = {
-          text: `对了,要做「${rec[0].service.name}」(¥${rec[0].service.price} · ${rec[0].service.durationMin} 分钟)吗?回「1」确认,或告诉我你想做的项目~`,
-          cards: [], quickReplies: ["1", "看看其他款式"], stage: "booking_service",
-        };
-        saveOut(convId, follow, { action: "choose_service", services: [rec[0].service, ...recommendServices({ storeId, limit: 3 }).map((r) => r.service)] });
-        return { ...follow, text: reply.text, cards: reply.cards, quickReplies: [...reply.quickReplies, "确认做" + rec[0].service.name] };
-      }
+  // ⑤a 意图:查消费历史(真实流水,不编造;须绑定会员)
+  if (/(上次|上回|之前做|以前做|消费记录|做过什么)/.test(text)) {
+    if (!member) {
+      const reply: ChatReply = {
+        text: "要查你的消费记录,需要先绑定会员身份(右上角「绑定会员」,输入会员号或手机尾号)。绑定前我看不到任何个人档案~",
+        cards: [], quickReplies: baseQuick, stage: "history",
+      };
+      saveOut(convId, reply, {});
+      return reply;
     }
+    const last = sqlite.prepare(
+      "SELECT service, amount, occurred_at FROM consumption_records WHERE member_id = ? ORDER BY occurred_at DESC LIMIT 1"
+    ).get(member.id) as { service: string; amount: number; occurred_at: string } | undefined;
+    if (!last) {
+      const reply: ChatReply = { text: "我还没查到你在店里的消费记录。想试试什么项目?我帮你推荐~", cards: [], quickReplies: baseQuick, stage: "history" };
+      saveOut(convId, reply, {});
+      return reply;
+    }
+    const svc = getCatalog(storeId).find((s) => s.name === last.service);
+    const reply: ChatReply = {
+      text: `你上次是 ${last.occurred_at.slice(0, 10)} 来做的「${last.service}」,消费 ¥${Math.round(last.amount)}。${svc ? "要不要再约一次?" : ""}`,
+      cards: [], quickReplies: svc ? ["再约一次", "看看新品", "多少钱?"] : baseQuick, stage: "history",
+    };
+    saveOut(convId, reply, svc ? { action: "choose_service", services: [svc] } : {});
+    return reply;
+  }
+
+  // ⑤ 意图:预约(按「明天」「周六」「11-07」筛真实排班;一条出站消息同时保存时段和候选服务)
+  if (/(预约|有空|时间|几点|排班|明天|后天)/.test(text)) {
+    const date = parseDate(text);
+    const weekday = parseWeekday(text);
+    let slots = getSlots(storeId, { date, weekday });
+    let note = "";
+    if ((date || weekday) && slots.length === 0) {
+      note = `${date ?? weekday}暂时没有排班,给你看看最近的时段:`;
+      slots = getSlots(storeId);
+    }
+    const intro = note || (member
+      ? `${greetName},最近的可预约时段如下(都来自店里真实排班)。选定后我直接帮你约上~`
+      : "最近的可预约时段如下。绑定会员后我还能记住你的偏好哦~");
+    const slotQuick = slots.slice(0, 3).map((s) => `${s.weekday}(${s.date.slice(5)})`);
+    // 选时段前需要先定服务:给默认热门服务候选
+    const rec = recommendServices({ storeId, favoriteService: member?.favoriteService ?? null, limit: 1 });
+    if (rec[0]) {
+      const services = [rec[0].service, ...recommendServices({ storeId, limit: 3 }).map((r) => r.service)
+        .filter((s) => s.id !== rec[0].service.id)];
+      const reply: ChatReply = {
+        text: `${intro}\n\n先定个项目:要做「${rec[0].service.name}」(¥${rec[0].service.price} · ${rec[0].service.durationMin} 分钟)吗?回「1」或「好的」确认,也可以告诉我想做的项目~`,
+        cards: [{ type: "slots", items: slots }],
+        quickReplies: ["确认做" + rec[0].service.name, "看看其他款式"],
+        stage: "booking_service",
+      };
+      saveOut(convId, reply, { action: "choose_service", services, slots });
+      return reply;
+    }
+    const reply: ChatReply = {
+      text: intro, cards: [{ type: "slots", items: slots }], quickReplies: slotQuick, stage: "booking_intent",
+    };
+    saveOut(convId, reply, {});
     return reply;
   }
 
@@ -263,11 +351,11 @@ export function handleCustomerMessage(opts: {
 
   // ⑧ 意图:新品/推荐/预算
   if (/(新品|推荐|款式|预算|秋天|做什么|适合)/.test(text)) {
-    const budget = Number(/(\d{2,4})\s*元/.exec(text)?.[1] ?? NaN);
+    const budget = parseBudget(text);
     const recs = recommendServices({
       storeId,
       favoriteService: member?.favoriteService ?? null,
-      budget: Number.isFinite(budget) ? budget : undefined,
+      budget,
       wantNew: /新品/.test(text) || /秋天/.test(text),
       limit: 3,
     });
@@ -283,13 +371,15 @@ export function handleCustomerMessage(opts: {
     return reply;
   }
 
-  // ⑨ 兜底:欢迎 + 能力说明
+  // ⑨ 兜底:欢迎 + 能力说明(保留未完成的选择上下文,用户随后回序号仍然有效)
   const reply: ChatReply = {
-    text: `${greetName}好呀~我是这家店的醒醒喵 🐱\n可以帮你:挑款式、查真实价格、看预约时段、绑定会员查权益。直接说需求就行!`,
+    text: pending.action
+      ? `${greetName},这句我没太听懂~可以回上面列表的序号继续,或者直接告诉我你想做什么。`
+      : `${greetName}好呀~我是这家店的醒醒喵 🐱\n可以帮你:挑款式、查真实价格、看预约时段、绑定会员查权益。直接说需求就行!`,
     cards: [],
     quickReplies: baseQuick,
-    stage: "greeting",
+    stage: pending.action ? "clarify" : "greeting",
   };
-  saveOut(convId, reply, {});
+  saveOut(convId, reply, pending);
   return reply;
 }

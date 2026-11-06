@@ -554,7 +554,10 @@ export async function runOrchestrator(user: SessionUserLike, goal: string, emit:
   // 2. 侦探喵
   const det = await runDetective(ctx);
   const analysis = det.payload.analysis ?? det.payload;
-  await updateTask(taskId, { payloadJson: JSON.stringify({ analysis, goalSummary: planSummary }) });
+  // 保留 budget:触达闸门(services.ts 闸门 3)依赖 payload.budget
+  await updateTask(taskId, {
+    payloadJson: JSON.stringify({ analysis, goalSummary: planSummary, ...(budget ? { budget } : {}) }),
+  });
   emit({ type: "log", agent: "喵老板", step: "验收", message: det.summary || "侦探喵完成体检" });
 
   // 3. 军师喵
