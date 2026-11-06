@@ -125,7 +125,11 @@ CREATE TABLE IF NOT EXISTS appointments (
   id TEXT PRIMARY KEY,
   store_id TEXT NOT NULL,
   task_id TEXT,
-  member_id TEXT NOT NULL,
+  member_id TEXT,
+  service_name TEXT,
+  staff_name TEXT,
+  scheduled_for TEXT,
+  source TEXT NOT NULL DEFAULT 'seller',
   proposed_at TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'proposed',
   created_at TEXT NOT NULL
@@ -167,5 +171,112 @@ CREATE TABLE IF NOT EXISTS audit_log (
   target TEXT NOT NULL,
   meta_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL
+);
+
+/* ---------- 销售转化系统(阶段①+②) ---------- */
+CREATE TABLE IF NOT EXISTS store_services (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  price REAL NOT NULL,
+  cost REAL NOT NULL DEFAULT 0,
+  duration_min INTEGER NOT NULL DEFAULT 60,
+  status TEXT NOT NULL DEFAULT 'active',
+  is_new INTEGER NOT NULL DEFAULT 0,
+  tags_json TEXT NOT NULL DEFAULT '[]'
+);
+CREATE TABLE IF NOT EXISTS store_staff_schedules (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL,
+  staff_name TEXT NOT NULL,
+  work_date TEXT NOT NULL,
+  start_at TEXT NOT NULL,
+  end_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS customer_identities (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL,
+  member_id TEXT,
+  channel TEXT NOT NULL,
+  external_user_id TEXT NOT NULL,
+  display_name TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE(store_id, channel, external_user_id)
+);
+CREATE TABLE IF NOT EXISTS customer_consents (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL,
+  member_id TEXT NOT NULL,
+  channel TEXT NOT NULL DEFAULT 'any',
+  purpose TEXT NOT NULL DEFAULT 'marketing',
+  status TEXT NOT NULL DEFAULT 'allowed',
+  source TEXT,
+  updated_at TEXT NOT NULL,
+  UNIQUE(member_id, purpose, channel)
+);
+CREATE TABLE IF NOT EXISTS sales_opportunities (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL,
+  member_id TEXT NOT NULL,
+  score REAL NOT NULL,
+  components_json TEXT NOT NULL DEFAULT '{}',
+  reason TEXT,
+  recommended_action TEXT,
+  status TEXT NOT NULL DEFAULT 'open',
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_so_store ON sales_opportunities(store_id, status);
+CREATE TABLE IF NOT EXISTS conversations (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL,
+  member_id TEXT,
+  identity_id TEXT,
+  channel TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS conversation_messages (
+  id TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL,
+  direction TEXT NOT NULL,
+  content TEXT NOT NULL,
+  meta_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cm_conv ON conversation_messages(conversation_id);
+CREATE TABLE IF NOT EXISTS orders (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL,
+  member_id TEXT,
+  appointment_id TEXT,
+  task_id TEXT,
+  total_amount REAL NOT NULL,
+  total_cost REAL NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'completed',
+  occurred_at TEXT NOT NULL,
+  UNIQUE(appointment_id)
+);
+CREATE TABLE IF NOT EXISTS order_items (
+  id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL,
+  service_id TEXT,
+  service_name TEXT NOT NULL,
+  price REAL NOT NULL,
+  quantity INTEGER NOT NULL DEFAULT 1
+);
+CREATE TABLE IF NOT EXISTS message_events (
+  id TEXT PRIMARY KEY,
+  message_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  meta_json TEXT NOT NULL DEFAULT '{}',
+  occurred_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS campaign_members (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  member_id TEXT NOT NULL,
+  group_type TEXT NOT NULL DEFAULT 'experiment',
+  attribution_status TEXT NOT NULL DEFAULT 'pending'
 );
 `;

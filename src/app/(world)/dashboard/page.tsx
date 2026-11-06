@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Target, ChevronRight, CircleCheck, CircleX } from "lucide-react";
 import CatCharacter from "@/components/world/CatCharacter";
 import OfficeScene from "@/components/world/OfficeScene";
+import CustomerEntryCard from "@/components/world/CustomerEntryCard";
 import { DemoTag, SectionTitle, StatTile, StatusDot } from "@/components/world/ui";
 import { dataProvider } from "@/lib/data-provider";
 import { deriveActivities, ACTIVITY_META } from "@/lib/activity";
@@ -73,7 +74,7 @@ export default function DashboardPage() {
             <div className="flex items-center gap-2 mb-2.5">
               <Sparkles size={15} style={{ color: "var(--brand-2)" }} />
               <span className="text-[12px] font-semibold tracking-wide" style={{ color: "var(--brand-2)" }}>WAKECAT 每日开工</span>
-              <DemoTag />
+              <span className="tag tag-green">真实数据库 · 60 名演示会员</span>
             </div>
             <h1 className="text-[21px] md:text-[26px] font-extrabold leading-snug">
               {data.greeting.split("。")[0]}。
@@ -124,10 +125,10 @@ export default function DashboardPage() {
           </div>
         </div>
         <StatTile label="本月唤醒会员" value={fmt(k.awakenedThisMonth)} accent="var(--yellow)"
-          sub={<span>成功回流到店 · 环比 +12%(演示)</span> as never} />
+          sub="成功回流到店(预约→到店真实记录)" />
         <StatTile label="本月回流消费" value={`¥${fmt(k.monthRevenue)}`} accent="var(--green)" sub="唤回到店实际消费" />
         <StatTile label="营销成本 / 产出比" value={`¥${fmt(k.monthCost)}`}
-          sub={<span className="inline-flex items-center gap-1.5">投入产出比 <b style={{ color: "var(--yellow)" }}>{(k.monthRevenue / k.monthCost).toFixed(1)} 倍</b></span> as never} />
+          sub={<span className="inline-flex items-center gap-1.5">投入产出比 <b style={{ color: "var(--yellow)" }}>{k.monthCost > 0 ? `${(k.monthRevenue / k.monthCost).toFixed(1)} 倍` : "—"}</b></span> as never} />
       </div>
 
       {/* ③ AI 员工办公室 + 全员状态条 */}
@@ -159,6 +160,9 @@ export default function DashboardPage() {
         </div>
         <OfficeScene employees={employees} activities={activities} />
       </div>
+
+      {/* 客户接待入口(被动销售) */}
+      <CustomerEntryCard storeSlug="miaowu" />
 
       {/* ④ 待审批 / 今日结果 / 工作日志 */}
       <div className="grid lg:grid-cols-3 gap-4">

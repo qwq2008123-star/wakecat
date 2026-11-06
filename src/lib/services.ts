@@ -2,7 +2,8 @@ import { db, sqlite } from "./db/client";
 import {
   tasks, taskLogs, strategies, outreachMessages, memberMemories,
   consumptionRecords, financeEntries, appointments, couponGrants,
-  memberCats, agentConfigs, auditLog,
+  memberCats, agentConfigs, auditLog, messageEvents as messageEventsTable,
+  orders as ordersTable, orderItems as orderItemsTable, storeServices,
 } from "./db/schema";
 import { eq, and } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
@@ -75,9 +76,9 @@ export async function decideTask(user: SessionUser, taskId: string, approve: boo
   });
 }
 
-/* ---------- 触达 ---------- */
+/* ---------- 触达(L3:三道业务闸门 + 幂等) ---------- */
 export async function queueAndSend(user: SessionUserLike, taskId: string, strategyId: string) {
-  // 权限硬闸门:任务必须已被 owner 批准,否则拒绝
+  // 闸门 0:任务必须已被 owner 批准
   const t = await getTask(taskId);
   if (!t || t.storeId !== user.storeId) throw new HttpError(404, "任务不存在");
   if (t.status !== "approved" && t.status !== "running") {
@@ -86,6 +87,54 @@ export async function queueAndSend(user: SessionUserLike, taskId: string, strate
   await db.update(tasks).set({ status: "running", updatedAt: now() }).where(eq(tasks.id, taskId));
   const st = (await db.select().from(strategies).where(eq(strategies.id, strategyId)).limit(1))[0];
   if (!st || st.taskId !== taskId) throw new HttpError(404, "策略不存在");
+
+  // 幂等:同一任务+策略只允许一条消息
+  const dup = sqlite.prepare(
+    "SELECT id FROM outreach_messages WHERE task_id = ? AND strategy_id = ?"
+  ).get(taskId, strategyId) as { id: string } | undefined;
+  if (dup) throw new HttpError(409, `该策略已触达过(消息 ${dup.id}),拒绝重复发送`);
+
+  // 闸门 1(L3):客户授权账本——退订立即生效,不做任何"应该不介意"判断
+  const consent = sqlite.prepare(`
+    SELECT status, source FROM customer_consents
+    WHERE member_id = ? AND purpose='marketing' ORDER BY updated_at DESC LIMIT 1
+  `).get(st.memberId) as { status: string; source: string } | undefined;
+  if (consent?.status === "unsubscribed") {
+    await audit(user.name, "outreach.blocked_consent", st.memberId, { taskId });
+    await appendLog({
+      taskId, agent: "销售喵", step: "触达被业务规则拦截", status: "error",
+      message: `该会员已退订营销消息(来源:${consent.source}),硬拦截,不发送`,
+    });
+    throw new HttpError(403, "该会员已退订营销消息,系统硬拦截");
+  }
+
+  // 闸门 2(L3):触达频次——14 天内已发 ≥2 条则冷却
+  const recent = sqlite.prepare(`
+    SELECT COUNT(*) as c FROM outreach_messages
+    WHERE member_id = ? AND status IN ('sent','replied')
+      AND created_at > datetime('now','-14 day')
+  `).get(st.memberId) as { c: number };
+  if (recent.c >= 2) {
+    await audit(user.name, "outreach.blocked_frequency", st.memberId, { taskId, recent: recent.c });
+    await appendLog({
+      taskId, agent: "销售喵", step: "触达被业务规则拦截", status: "error",
+      message: `该会员 14 天内已被触达 ${recent.c} 次,触发频次冷却`,
+    });
+    throw new HttpError(403, `触达频次超限:该会员 14 天内已触达 ${recent.c} 次`);
+  }
+
+  // 闸门 3(L3):任务预算(若商家目标里声明了 budget)
+  const payload = JSON.parse(t.payloadJson || "{}") as { budget?: number };
+  if (typeof payload.budget === "number") {
+    const spent = sqlite.prepare(
+      "SELECT COALESCE(SUM(amount),0) as s FROM finance_entries WHERE task_id = ? AND type='cost'"
+    ).get(taskId) as { s: number };
+    if (spent.s + st.predictedCost > payload.budget) {
+      await audit(user.name, "outreach.blocked_budget", taskId, { spent: spent.s, need: st.predictedCost, budget: payload.budget });
+      throw new HttpError(403, `预算超限:已花 ¥${Math.round(spent.s)},本条还需 ¥${st.predictedCost},超出预算 ¥${payload.budget}`);
+    }
+  }
+
   const msgId = rid("om");
   await db.insert(outreachMessages).values({
     id: msgId, taskId, strategyId, memberId: st.memberId,
@@ -95,7 +144,7 @@ export async function queueAndSend(user: SessionUserLike, taskId: string, strate
   await appendLog({
     taskId, agent: "销售喵", step: "执行触达", toolName: "queue_message",
     toolInput: { strategyId, memberId: st.memberId }, toolOutput: { msgId },
-    message: "消息进入发送队列",
+    message: "闸门通过(授权/频次/预算),消息进入发送队列",
   });
 
   // 渠道真实调用(演示通道;失败如实记录)
@@ -109,6 +158,10 @@ export async function queueAndSend(user: SessionUserLike, taskId: string, strate
     await db.update(outreachMessages).set({
       status: "sent", externalId: send.externalId, sentAt: now(),
     }).where(eq(outreachMessages.id, msgId));
+    await db.insert(messageEventsTable).values({
+      id: rid("me"), messageId: msgId, eventType: "sent",
+      metaJson: JSON.stringify({ channel: st.channel, externalId: send.externalId }), occurredAt: now(),
+    });
     await db.insert(financeEntries).values({
       id: rid("fe"), storeId: user.storeId, taskId, strategyId,
       type: "cost",
@@ -122,6 +175,10 @@ export async function queueAndSend(user: SessionUserLike, taskId: string, strate
     await db.update(outreachMessages).set({
       status: "failed", failureReason: send.failureReason,
     }).where(eq(outreachMessages.id, msgId));
+    await db.insert(messageEventsTable).values({
+      id: rid("me"), messageId: msgId, eventType: "failed",
+      metaJson: JSON.stringify({ reason: send.failureReason }), occurredAt: now(),
+    });
     await appendLog({
       taskId, agent: "销售喵", step: "触达失败", toolName: "send_message",
       status: "error", toolOutput: send,
@@ -195,6 +252,21 @@ export async function recordVisit(user: SessionUser, memberId: string, opts: { s
         .where(and(eq(appointments.taskId, taskId), eq(appointments.memberId, memberId)));
     }
   }
+  // 真实订单(收据层):订单 + 明细,成本来自服务目录
+  const orderId = rid("ord");
+  const svc = sqlite.prepare(
+    "SELECT id, cost FROM store_services WHERE store_id = ? AND name LIKE ? LIMIT 1"
+  ).get(user.storeId, `%${opts.service.slice(0, 2)}%`) as { id: string; cost: number } | undefined;
+  await db.insert(ordersTable).values({
+    id: orderId, storeId: user.storeId, memberId,
+    appointmentId: null, taskId: taskId ?? null,
+    totalAmount: opts.amount, totalCost: svc?.cost ?? 0,
+    status: "completed", occurredAt: now(),
+  }).run();
+  await db.insert(orderItemsTable).values({
+    id: rid("oi"), orderId, serviceId: svc?.id ?? null,
+    serviceName: opts.service, price: opts.amount, quantity: 1,
+  }).run();
   // 猫咪喂食
   const cat = (await db.select().from(memberCats).where(eq(memberCats.memberId, memberId)).limit(1))[0];
   if (cat) {

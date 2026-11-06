@@ -1,4 +1,4 @@
-import { ensureSeeded } from "./seed-data";
+import { ensureSeeded, ensureSalesSeed } from "./seed-data";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -10,6 +10,7 @@ export function ensureBootstrap(): Promise<void> {
   if (!globalThis.__wxCatBootstrapped) {
     globalThis.__wxCatBootstrapped = (async () => {
       ensureSeeded();
+      ensureSalesSeed(); // 服务目录/排班/授权账本:可对旧库增量补充
     })();
   }
   return globalThis.__wxCatBootstrapped;

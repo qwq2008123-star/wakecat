@@ -136,7 +136,11 @@ export const appointments = sqliteTable("appointments", {
   id: text("id").primaryKey(),
   storeId: text("store_id").notNull(),
   taskId: text("task_id"),
-  memberId: text("member_id").notNull(),
+  memberId: text("member_id"),
+  serviceName: text("service_name"),
+  staffName: text("staff_name"),
+  scheduledFor: text("scheduled_for"),
+  source: text("source").notNull().default("seller"),
   proposedAt: text("proposed_at").notNull(),
   status: text("status").notNull().default("proposed"), // proposed | confirmed | visited | cancelled
   createdAt: text("created_at").notNull(),
@@ -184,4 +188,116 @@ export const auditLog = sqliteTable("audit_log", {
   target: text("target").notNull(),
   metaJson: text("meta_json").notNull().default("{}"),
   createdAt: text("created_at").notNull(),
+});
+
+/* ---------- 销售转化系统 ---------- */
+export const storeServices = sqliteTable("store_services", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull(),
+  name: text("name").notNull(),
+  price: real("price").notNull(),
+  cost: real("cost").notNull().default(0),
+  durationMin: integer("duration_min").notNull().default(60),
+  status: text("status").notNull().default("active"),
+  isNew: integer("is_new").notNull().default(0),
+  tagsJson: text("tags_json").notNull().default("[]"),
+});
+
+export const storeStaffSchedules = sqliteTable("store_staff_schedules", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull(),
+  staffName: text("staff_name").notNull(),
+  workDate: text("work_date").notNull(),
+  startAt: text("start_at").notNull(),
+  endAt: text("end_at").notNull(),
+});
+
+export const customerIdentities = sqliteTable("customer_identities", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull(),
+  memberId: text("member_id"),
+  channel: text("channel").notNull(),
+  externalUserId: text("external_user_id").notNull(),
+  displayName: text("display_name"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const customerConsents = sqliteTable("customer_consents", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull(),
+  memberId: text("member_id").notNull(),
+  channel: text("channel").notNull().default("any"),
+  purpose: text("purpose").notNull().default("marketing"),
+  status: text("status").notNull().default("allowed"),
+  source: text("source"),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const salesOpportunities = sqliteTable("sales_opportunities", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull(),
+  memberId: text("member_id").notNull(),
+  score: real("score").notNull(),
+  componentsJson: text("components_json").notNull().default("{}"),
+  reason: text("reason"),
+  recommendedAction: text("recommended_action"),
+  status: text("status").notNull().default("open"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const conversations = sqliteTable("conversations", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull(),
+  memberId: text("member_id"),
+  identityId: text("identity_id"),
+  channel: text("channel").notNull(),
+  status: text("status").notNull().default("open"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const conversationMessages = sqliteTable("conversation_messages", {
+  id: text("id").primaryKey(),
+  conversationId: text("conversation_id").notNull(),
+  direction: text("direction").notNull(), // in | out
+  content: text("content").notNull(),
+  metaJson: text("meta_json").notNull().default("{}"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const orders = sqliteTable("orders", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull(),
+  memberId: text("member_id"),
+  appointmentId: text("appointment_id"),
+  taskId: text("task_id"),
+  totalAmount: real("total_amount").notNull(),
+  totalCost: real("total_cost").notNull().default(0),
+  status: text("status").notNull().default("completed"),
+  occurredAt: text("occurred_at").notNull(),
+});
+
+export const orderItems = sqliteTable("order_items", {
+  id: text("id").primaryKey(),
+  orderId: text("order_id").notNull(),
+  serviceId: text("service_id"),
+  serviceName: text("service_name").notNull(),
+  price: real("price").notNull(),
+  quantity: integer("quantity").notNull().default(1),
+});
+
+export const messageEvents = sqliteTable("message_events", {
+  id: text("id").primaryKey(),
+  messageId: text("message_id").notNull(),
+  eventType: text("event_type").notNull(),
+  metaJson: text("meta_json").notNull().default("{}"),
+  occurredAt: text("occurred_at").notNull(),
+});
+
+export const campaignMembers = sqliteTable("campaign_members", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull(),
+  taskId: text("task_id").notNull(),
+  memberId: text("member_id").notNull(),
+  groupType: text("group_type").notNull().default("experiment"),
+  attributionStatus: text("attribution_status").notNull().default("pending"),
 });

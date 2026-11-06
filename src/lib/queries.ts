@@ -223,3 +223,145 @@ export async function getLlmStatus(storeId: string) {
     keyMasked: c.apiKey ? c.apiKey.slice(0, 6) + "****" : null,
   };
 }
+
+/* ============================================================
+   真实数据视图(阶段①:UI 从 mock 切换到真库)
+   ============================================================ */
+
+export interface RealDashboard {
+  greeting: string;
+  dateLabel: string;
+  goal: string;
+  goalIsDemo: true;
+  kpis: {
+    totalMembers: number; activeMembers: number; sleepingMembers: number;
+    premiumMembers: number; highRiskMembers: number;
+    awakenedThisMonth: number; monthCost: number; monthRevenue: number;
+  };
+  logs: { id: string; time: string; employeeId: string; text: string }[];
+  briefing: string;
+}
+
+const AGENT_ID: Record<string, string> = {
+  "喵老板": "boss", "侦探喵": "detective", "军师喵": "strategist",
+  "销售喵": "seller", "财务喵": "accountant",
+};
+
+export async function getRealDashboard(storeId: string): Promise<RealDashboard> {
+  const mems = await listMembers(storeId, "all");
+  const count = (s: string) => mems.filter((m) => m.state === s).length;
+  const premium = mems.filter((m) => m.totalSpend >= 800).length;
+  const rows = all(`
+    SELECT l.*, t.title FROM task_logs l JOIN tasks t ON t.id = l.task_id
+    WHERE t.store_id = ? ORDER BY l.created_at DESC LIMIT 8
+  `, storeId);
+  const fin = get(`
+    SELECT
+      COALESCE(SUM(CASE WHEN type='cost' THEN amount END),0) AS cost,
+      COALESCE(SUM(CASE WHEN type='revenue' THEN amount END),0) AS revenue
+    FROM finance_entries WHERE store_id = ?
+  `, storeId) as { cost: number; revenue: number };
+  const awakened = get(`
+    SELECT COUNT(DISTINCT member_id) AS c FROM appointments
+    WHERE store_id = ? AND status = 'visited' AND created_at > datetime('now','-30 day')
+  `, storeId) as { c: number };
+  const lastReport = get(`
+    SELECT result_json, title, status FROM tasks
+    WHERE store_id = ? AND status='completed' ORDER BY updated_at DESC LIMIT 1
+  `, storeId) as { result_json: string; title: string; status: string } | undefined;
+
+  const active = count("active"), drowsy = count("drowsy"),
+    hib = count("hibernate"), sick = count("sick");
+  let briefing = `目前会员生态:活跃 ${active}、沉睡 ${drowsy + hib}、临期卡 ${sick}。`;
+  if (lastReport) {
+    try {
+      const r = JSON.parse(lastReport.result_json);
+      if (typeof r.net === "number") {
+        briefing += `最近一次任务「${lastReport.title}」净收益 ¥${Math.round(r.net)}。`;
+      }
+    } catch { /* 忽略解析失败 */ }
+  }
+  briefing += ` ${mems.filter((m) => m.state !== "active").length} 只猫在等一次唤醒。`;
+
+  return {
+    greeting: "早上好,老板。今天你的 AI 团队已经准备好开始工作。",
+    dateLabel: new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "long" }),
+    goal: "把超过 60 天没到店的高价值会员请回来,本周多约 3 单",
+    goalIsDemo: true,
+    kpis: {
+      totalMembers: mems.length,
+      activeMembers: active,
+      sleepingMembers: drowsy + hib,
+      premiumMembers: premium,
+      highRiskMembers: sick + hib,
+      awakenedThisMonth: awakened.c,
+      monthCost: Math.round(fin.cost),
+      monthRevenue: Math.round(fin.revenue),
+    },
+    logs: rows.map((r) => ({
+      id: r.id as string,
+      time: String(r.created_at).slice(11, 16),
+      employeeId: AGENT_ID[r.agent as string] ?? "boss",
+      text: String(r.message ?? r.step).slice(0, 80),
+    })),
+    briefing,
+  };
+}
+
+/* 真任务 → 任务大厅视图 */
+export async function getRealTaskViews(storeId: string) {
+  const tasks = await listTasks(storeId);
+  return tasks.map((t) => {
+    const status = t.status as string;
+    const progress = status === "completed" ? 100 : status === "running" ? 85
+      : status === "approved" ? 70 : status === "pending_approval" ? 60
+      : status === "paused" ? 30 : 0;
+    const doneBy = {
+      draft: 0, pending_approval: 2, approved: 2, rejected: 2,
+      running: 3, completed: 5, failed: 3,
+    }[status] ?? 0;
+    const stepNames = ["侦探喵体检", "军师喵定策略", "商家审批", "销售喵触达", "财务喵复盘"];
+    return {
+      id: t.id as string,
+      name: t.title as string,
+      kind: "会员唤醒",
+      ownerId: "boss",
+      memberNames: [] as string[],
+      targetCount: (t.strategy_count as number) || 0,
+      cost: Math.round((t.cost_estimate as number) || 0),
+      expectedRevenue: 0,
+      risk: "mid" as const,
+      status: status as import("../mock-data/types").TaskStatus,
+      progress,
+      steps: stepNames.map((name, i) => ({ name, done: i < doneBy })),
+      createdAt: String(t.created_at),
+      engineNote: `引擎:${t.engine === "llm" ? "GLM 大模型" : "内置规则引擎"} · 触达 ${t.sent_count} · 回复 ${t.replied_count}`,
+    };
+  });
+}
+
+/* 真会员记忆 → 博物馆条目 */
+export async function getRealMemories(storeId: string, memberId?: string): Promise<
+  { id: string; memberId: string; type: string; content: string; source: string; recordedAt: string }[]
+> {
+  const rows = all(`
+    SELECT mm.*, m.name AS member_name FROM member_memories mm
+    JOIN members m ON m.id = mm.member_id
+    WHERE m.store_id = ? ${memberId ? "AND mm.member_id = ?" : ""}
+    ORDER BY mm.created_at DESC LIMIT 200
+  `, ...(memberId ? [storeId, memberId] : [storeId]));
+  const kindMap: Record<string, string> = {
+    preference: "服务偏好", fact: "消费记忆", event: "特殊事件", feedback: "会员反馈",
+  };
+  const srcMap: Record<string, string> = {
+    order: "消费流水", manual: "老板娘口述", chat: "沟通记录", agent_inferred: "AI 推断",
+  };
+  return rows.map((r) => ({
+    id: r.id as string,
+    memberId: r.member_id as string,
+    type: kindMap[r.kind as string] ?? (r.kind as string),
+    content: r.content as string,
+    source: `${srcMap[r.source_type as string] ?? r.source_type} · ${String(r.source_ref).split(":").pop()}`,
+    recordedAt: String(r.recordedAt ?? r.created_at ?? "").slice(0, 10),
+  }));
+}

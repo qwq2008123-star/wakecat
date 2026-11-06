@@ -105,7 +105,7 @@ export default function FinancePage() {
               />
               <Legend wrapperStyle={{ fontSize: 11.5 }} />
               <Area type="monotone" dataKey="revenue" name="实际回流" stroke="var(--green)" strokeWidth={2.5} fill="url(#gRev)" />
-              <Area type="monotone" dataKey="predicted" name="预测回流" stroke="var(--ink-3)" strokeWidth={1.8} strokeDasharray="6 5" fill="transparent" />
+              <Area type="monotone" dataKey="predicted" name="预测回流" stroke="var(--ink-3)" strokeWidth={1.8} strokeDasharray="6 5" fill="transparent" connectNulls />
               <Area type="monotone" dataKey="cost" name="营销成本" stroke="var(--red)" strokeWidth={2} fill="url(#gCost)" />
             </AreaChart>
           </ResponsiveContainer>

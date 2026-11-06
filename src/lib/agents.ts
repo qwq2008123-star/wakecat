@@ -8,6 +8,7 @@ import {
 import {
   createGoalTask, updateTask, getTask, appendLog, queueAndSend, SessionUserLike,
 } from "./services";
+import { runOpportunityScan } from "./sales/opportunity-engine";
 
 const rid = (p: string) => `${p}_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const nowIso = () => new Date().toISOString();
@@ -101,8 +102,14 @@ function rulesDetective(storeId: string): {
   return { segments, opportunities };
 }
 
-function rulesStrategies(storeId: string, taskId: string, ops: Array<MemberBrief & { reason: string; risk: string }>) {
-  return ops.map((o) => {
+function rulesStrategies(storeId: string, taskId: string, ops: Array<Record<string, unknown>>) {
+  return ops.map((raw) => {
+    const o = {
+      ...(raw as unknown as MemberBrief & { reason?: string }),
+      id: (raw.memberId ?? raw.id) as string,
+      name: (raw.name ?? "") as string,
+      reason: (raw.reason ?? "") as string,
+    };
     let kind = "callback", content = "", cost = 0, uplift = 0;
     if (o.state === "sick") {
       kind = "rights";
@@ -208,13 +215,15 @@ async function runAgentStage(opts: {
 }): Promise<{ payload: Record<string, unknown>; summary: string; engine: "llm" | "rules"; error?: string }> {
   const { ctx, agent, stage, label } = opts;
   const mode = opts.forceRules ? "rules" : ctx.config.engineMode;
-  if (mode !== "llm" || !ctx.config.apiKey) {
-    if (mode === "llm" && !ctx.config.apiKey) {
-      await appendLog({ taskId: ctx.taskId, agent, step: "无法启动", status: "error", message: "engineMode=llm 但未配置 API Key,任务终止" });
-      throw new Error("engineMode=llm 但未配置 API Key");
-    }
+  /* 三分支路由:rules 强制规则;llm 必须有 Key 否则终止;auto 有 Key 走 LLM、失败诚实降级 */
+  if (mode === "llm" && !ctx.config.apiKey) {
+    await appendLog({ taskId: ctx.taskId, agent, step: "无法启动", status: "error", message: "engineMode=llm 但未配置 API Key,任务终止" });
+    throw new Error("engineMode=llm 但未配置 API Key");
+  }
+  const useLlm = mode === "llm" || (mode === "auto" && !!ctx.config.apiKey);
+  if (!useLlm) {
     ctx.emit({ type: "stage", stage, label, status: "start", engine: "rules" });
-    await appendLog({ taskId: ctx.taskId, agent, step: `${label}(内置规则引擎)`, message: "未使用大模型,规则引擎接管" });
+    await appendLog({ taskId: ctx.taskId, agent, step: `${label}(内置规则引擎)`, message: mode === "auto" ? "auto 模式:未配置 API Key,规则引擎接管" : "未使用大模型,规则引擎接管" });
     const r = await opts.fallback();
     ctx.emit({ type: "stage", stage, label, status: "ok", engine: "rules" });
     return { ...r, engine: "rules" };
@@ -294,10 +303,20 @@ opportunities 按唤醒价值排序,最多 8 人,优先卡快过期和深度沉�
       }
     },
     fallback: async () => {
+      const scan = runOpportunityScan(ctx.storeId);   // 真实机会池落库(sales_opportunities)
       const r = rulesDetective(ctx.storeId);
+      const opportunities = scan.opportunities.slice(0, 8).map((o) => ({
+        memberId: o.memberId, name: o.memberName, spend: o.spend, totalSpend: o.spend,
+        reason: `${o.reason} · 评分 ${o.score}(R${o.components.R}/V${o.components.V}/P${o.components.P})`,
+        risk: o.score > 70 ? "高" : o.score > 45 ? "中" : "低",
+      }));
+      const analysis = {
+        segments: r.segments, opportunities,
+        summary: `扫描 ${scan.scanned} 名会员,硬拦截 ${scan.blocked} 名(已退订),圈出 ${opportunities.length} 个唤醒机会。`,
+      };
       return {
-        payload: { analysis: r },
-        summary: `发现 ${r.segments.find((s) => s.name === "冬眠")?.count ?? 0} 只冬眠猫、${r.segments.find((s) => s.name === "卡快过期")?.count ?? 0} 只卡快过期,圈出 ${r.opportunities.length} 个唤醒机会。`,
+        payload: { analysis, opportunityCount: scan.opportunities.length, blocked: scan.blocked },
+        summary: analysis.summary,
       };
     },
   });
@@ -510,7 +529,16 @@ export async function runOrchestrator(user: SessionUserLike, goal: string, emit:
       } catch { /* 用默认标题 */ }
     }
   }
-  await updateTask(taskId, { title, engine: config.engineMode === "rules" || !config.apiKey ? "rules" : "llm" });
+  const budgetMatch = goal.match(/预算[^0-9]*(\d{2,5})\s*元/);
+  const budget = budgetMatch ? Number(budgetMatch[1]) : undefined;
+  await updateTask(taskId, {
+    title,
+    engine: config.engineMode === "rules" || !config.apiKey ? "rules" : "llm",
+    payloadJson: JSON.stringify({ goalSummary: planSummary, ...(budget ? { budget } : {}) }),
+  });
+  if (budget) {
+    await appendLog({ taskId, agent: "喵老板", step: "预算约束", message: `解析到营销预算上限 ¥${budget},触达闸门将据此拦截超支` });
+  }
   await appendLog({ taskId, agent: "喵老板", step: "理解目标并建任务", message: planSummary });
   emit({ type: "stage", stage: "plan-goal", label: "喵老板·理解目标", status: "ok" });
   emit({ type: "log", agent: "喵老板", step: "执行计划", message: planSummary });

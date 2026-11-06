@@ -15,7 +15,7 @@ import RegionCard from "@/components/world/RegionCard";
 import ZoneBackdrop from "@/components/world/ZoneBackdrop";
 import { DemoTag, PageHeader, StatTile } from "@/components/world/ui";
 import { dataProvider } from "@/lib/data-provider";
-import { DASHBOARD } from "@/mock-data/workspace";
+import { DashboardData } from "@/mock-data/types";
 import { MemberCatView, Zone } from "@/mock-data/types";
 import { ZONE_META } from "@/mock-data/members";
 
@@ -67,10 +67,17 @@ export default function MembersPage() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("spend");
   const [selected, setSelected] = useState<MemberCatView | null>(null);
+  const [dash, setDash] = useState<DashboardData | null>(null);
 
-  useEffect(() => { dataProvider.getMembers().then(setMembers); }, []);
+  useEffect(() => {
+    dataProvider.getMembers().then(setMembers);
+    dataProvider.getDashboard().then(setDash);
+  }, []);
 
-  const k = DASHBOARD.kpis;
+  const k = dash?.kpis ?? {
+    totalMembers: 0, activeMembers: 0, sleepingMembers: 0,
+    premiumMembers: 0, highRiskMembers: 0,
+  };
   const newCount = members.filter((m) => m.zone === "new").length;
 
   const filtered = useMemo(() => {

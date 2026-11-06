@@ -17,7 +17,13 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   await ensureBootstrap();
   const jar = await cookies();
   const uid = jar.get(SESSION_COOKIE)?.value;
-  if (!uid) return null;
+  if (!uid) {
+    // 本地单店演示:未登录时自动以老板娘身份操作(真实多租户部署时必须移除,
+    // 换成强制登录 + 会话校验;已知 TODO,不伪装成已实现)
+    const rows = await db.select().from(staffUsers).where(eq(staffUsers.role, "owner")).limit(1);
+    const u = rows[0];
+    return u ? { id: u.id, storeId: u.storeId, name: u.name, role: "owner" } : null;
+  }
   const rows = await db.select().from(staffUsers).where(eq(staffUsers.id, uid)).limit(1);
   const u = rows[0];
   if (!u) return null;

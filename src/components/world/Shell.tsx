@@ -50,9 +50,9 @@ function SidebarFooter() {
     <div className="mt-auto panel2 p-3 text-[11px]" style={{ color: "var(--ink-2)" }}>
       <div className="flex items-center gap-2 mb-1">
         <StatusDot color="var(--yellow)" pulse />
-        <b style={{ color: "var(--ink)" }}>第一阶段 · UI 演示模式</b>
+        <b style={{ color: "var(--ink)" }}>销售系统 · 本地真实数据库</b>
       </div>
-      <p>数据来自 mock-data 演示集;第二阶段接入 Supabase 与真实 AI Agent。</p>
+      <p>经营数据来自本地 SQLite(60 名演示会员);角色设定与实验数据仍为 mock,已标注。</p>
     </div>
   );
 }

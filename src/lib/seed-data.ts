@@ -2,7 +2,7 @@ import { db, sqlite } from "./db/client";
 import { randomUUID } from "node:crypto";
 import {
   stores, staffUsers, members, consumptionRecords, memberMemories,
-  memberCats, agentConfigs,
+  memberCats, agentConfigs, storeServices, storeStaffSchedules, customerConsents,
 } from "./db/schema";
 import { sql } from "drizzle-orm";
 
@@ -154,4 +154,57 @@ export function ensureSeeded() {
       updatedAt: daysAgo(Math.min(days, 60)),
     }).run();
   }
+}
+
+/* ============================================================
+   销售基础设施种子:可对已存在的旧库增量补充(与 ensureSeeded 解耦)
+   ============================================================ */
+export function ensureSalesSeed() {
+  const has = sqlite.prepare("SELECT COUNT(*) as c FROM store_services").get() as { c: number };
+  if (has.c > 0) return;
+
+  const CATALOG: [string, number, number, number, boolean][] = [
+    ["基础美甲", 98, 25, 60, false],
+    ["纯色跳色", 98, 24, 60, false],
+    ["法式白边", 108, 28, 75, false],
+    ["猫眼款美甲", 158, 40, 90, false],
+    ["渐变晕染", 148, 38, 85, false],
+    ["极光粉", 138, 34, 80, true],
+    ["猫眼镭射", 168, 44, 95, true],
+    ["高级款美甲", 228, 70, 120, false],
+    ["手部护理", 38, 10, 30, false],
+    ["卸甲+手部护理", 68, 18, 45, false],
+  ];
+  CATALOG.forEach(([name, price, cost, dur, isNew], i) => {
+    db.insert(storeServices).values({
+      id: `svc_${String(i + 1).padStart(3, "0")}`, storeId: STORE_ID,
+      name, price, cost, durationMin: dur, status: "active",
+      isNew: isNew ? 1 : 0,
+      tagsJson: JSON.stringify(isNew ? ["新品"] : []),
+    }).run();
+  });
+
+  const base = new Date();
+  for (let d = 0; d < 7; d++) {
+    const day = new Date(base.getTime() + d * 86400_000).toISOString().slice(0, 10);
+    ARTISTS.forEach((a, ai) => {
+      if ((d + ai) % 5 === 4) return;
+      db.insert(storeStaffSchedules).values({
+        id: `sch_d${d}_a${ai}`, storeId: STORE_ID, staffName: a,
+        workDate: day, startAt: "10:00", endAt: "20:00",
+      }).run();
+    });
+  }
+
+  const memberRows = sqlite.prepare("SELECT id FROM members WHERE store_id = ?").all(STORE_ID) as { id: string }[];
+  const r2 = mulberry32(777);
+  memberRows.forEach((m, i) => {
+    db.insert(customerConsents).values({
+      id: `cons_${m.id}`, storeId: STORE_ID, memberId: m.id,
+      channel: "any", purpose: "marketing",
+      status: i % 20 === 7 ? "unsubscribed" : "allowed",
+      source: i % 20 === 7 ? "会员回复「以后不要联系」" : "入会协议默认勾选",
+      updatedAt: new Date(Date.now() - Math.floor(r2() * 200) * 86400_000).toISOString(),
+    }).run();
+  });
 }

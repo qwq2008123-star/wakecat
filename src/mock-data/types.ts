@@ -98,7 +98,7 @@ export interface FinancePoint {
   month: string;
   cost: number;
   revenue: number;          // 实际
-  predicted: number;        // 预测(演示)
+  predicted: number | null; // 预测(演示);真实模式下为 null
 }
 
 export interface FinanceSummary {

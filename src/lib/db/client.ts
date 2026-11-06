@@ -27,6 +27,15 @@ function openDb(): Database.Database {
     if (!cols("finance_entries").includes("strategy_id")) {
       raw.exec("ALTER TABLE finance_entries ADD COLUMN strategy_id TEXT");
     }
+    for (const col of ["service_name TEXT", "staff_name TEXT", "scheduled_for TEXT", "source TEXT NOT NULL DEFAULT 'seller'"]) {
+      const name = col.split(" ")[0];
+      if (!cols("appointments").includes(name)) {
+        raw.exec(`ALTER TABLE appointments ADD COLUMN ${col}`);
+      }
+    }
+    // 幂等约束:同一任务下同一策略只允许一条触达消息(CREATE INDEX IF NOT EXISTS 自身幂等)
+    raw.exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_om_task_strategy ON outreach_messages(task_id, strategy_id);");
+    raw.exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_appt ON orders(appointment_id) WHERE appointment_id IS NOT NULL;");
     globalThis.__wxCatDb = raw;
   }
   return globalThis.__wxCatDb;
