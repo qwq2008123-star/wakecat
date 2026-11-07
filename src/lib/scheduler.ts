@@ -1,4 +1,5 @@
 import { decayAllCats } from "./cats/engine";
+import { runCatMissCheck } from "./cats/miss";
 import { runOpportunityScan } from "./sales/opportunity-engine";
 import { DEFAULT_STORE_SLUG, resolveStore } from "./store";
 
@@ -16,22 +17,23 @@ declare global {
   var __wxCatLastScan: string | undefined;
 }
 
-export function runScheduledJobs(): {
-  catsDecayed: number; membersScanned: number; blocked: number; opportunities: number;
-} {
+export async function runScheduledJobs(): Promise<{
+  catsDecayed: number; membersScanned: number; blocked: number; opportunities: number; catMissSent: number;
+}> {
   const store = resolveStore(DEFAULT_STORE_SLUG);
-  if (!store) return { catsDecayed: 0, membersScanned: 0, blocked: 0, opportunities: 0 };
+  if (!store) return { catsDecayed: 0, membersScanned: 0, blocked: 0, opportunities: 0, catMissSent: 0 };
   const catsDecayed = decayAllCats(store.id);
   const scan = runOpportunityScan(store.id);
+  const miss = await runCatMissCheck(store.id); // 主人 30 天没来,猫主动发想念消息(7天/条防打扰)
   globalThis.__wxCatLastScan = new Date().toISOString();
-  return { catsDecayed, membersScanned: scan.scanned, blocked: scan.blocked, opportunities: scan.opportunities.length };
+  return { catsDecayed, membersScanned: scan.scanned, blocked: scan.blocked, opportunities: scan.opportunities.length, catMissSent: miss.sent };
 }
 
 export function startScheduler() {
   if (globalThis.__wxCatScheduler) return;
   // 首次立即执行一次(建库后种子已就绪)
-  try { runScheduledJobs(); } catch { /* 首次建库中,忽略 */ }
+  void runScheduledJobs().catch(() => { /* 首次建库中,忽略 */ });
   globalThis.__wxCatScheduler = setInterval(() => {
-    try { runScheduledJobs(); } catch { /* 单次失败不影响后续 */ }
+    void runScheduledJobs().catch(() => { /* 单次失败不影响后续 */ });
   }, 60 * 60 * 1000); // 每小时
 }

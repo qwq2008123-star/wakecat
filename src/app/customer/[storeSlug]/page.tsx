@@ -278,7 +278,9 @@ function BestieChatPanel({ storeSlug, visitorId, bound, catName, onEnergy, seed,
         if (!last) return;
         setMsgs((prev) => {
           if (prev.some((m) => m.pollId === `${last.createdAt}`)) return prev;
-          const label = last.channel === "in-site"
+          const label = last.channel === "cat-miss"
+            ? `🐱 ${catName ?? "猫咪"}想你啦`
+            : last.channel === "in-site"
             ? "💌 店铺消息"
             : last.human ? "💬 芳姐(老板娘)" : null;
           if (!label) return prev;
