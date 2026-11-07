@@ -50,7 +50,8 @@ export default function FinancePage() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           {funnel.map((x, i) => {
             const emp = EMPLOYEE_MAP[x.cat as keyof typeof EMPLOYEE_MAP];
-            const rate = i === 0 ? null : `${Math.round((x.v / funnel[i - 1].v) * 100)}%`;
+            const prev = i > 0 ? funnel[i - 1].v : 0;
+            const rate = i === 0 ? null : prev > 0 ? `${Math.round((x.v / prev) * 100)}%` : "—";
             return (
               <div key={x.label} className="panel2 p-4 relative overflow-hidden">
                 <div
@@ -62,7 +63,7 @@ export default function FinancePage() {
                 <div className="text-[12px] font-semibold">{x.label}</div>
                 <div className="text-[10.5px] mt-0.5" style={{ color: "var(--ink-3)" }}>
                   {emp.name}负责{i === funnel.length - 1
-                    ? ` · 人均 ¥${Math.round(x.v / funnel[0].v)}`
+                    ? ` · 人均 ¥${funnel[0].v > 0 ? Math.round(x.v / funnel[0].v) : 0}`
                     : rate ? ` · 环比转化 ${rate}` : " · 起点"}
                 </div>
               </div>

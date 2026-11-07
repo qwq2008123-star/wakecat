@@ -489,13 +489,15 @@ export async function refundOrder(user: SessionUser, orderId: string, reason: st
   `).all(orderId) as Array<{ dedupe_key: string }>;
   const { reverseEnergy } = await import("./cats/engine");
   for (const t of txs) reverseEnergy(t.dedupe_key, `订单退款:${reason}`);
-  // 财务冲减:负向收入条目(任务归因的也同步冲减)
-  await db.insert(financeEntries).values({
-    id: rid("fe"), storeId: user.storeId,
-    taskId: (o.task_id as string) ?? null, strategyId: null,
-    type: "revenue", amount: -Number(o.total_amount ?? 0),
-    note: `订单退款冲减:${reason}`, occurredAt: now(),
-  });
+  // 财务冲减:只有当初记过收入的任务归因订单才冲减(自然订单本来就没记收入)
+  if (o.task_id) {
+    await db.insert(financeEntries).values({
+      id: rid("fe"), storeId: user.storeId,
+      taskId: o.task_id as string, strategyId: null,
+      type: "revenue", amount: -Number(o.total_amount ?? 0),
+      note: `订单退款冲减:${reason}`, occurredAt: now(),
+    });
+  }
   await audit(user.name, "order.refund", orderId, { reason, amount: o.total_amount });
   return { ok: true, energyReversed: txs.length };
 }
