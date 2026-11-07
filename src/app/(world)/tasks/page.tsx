@@ -211,6 +211,7 @@ export default function TasksPage() {
   const [goalLogs, setGoalLogs] = useState<string[]>([]);
   const [execBusyId, setExecBusyId] = useState<string | null>(null);
   const [doneHint, setDoneHint] = useState<string | null>(null);
+  const [liveStages, setLiveStages] = useState<{ key: string; status: "run" | "ok" | "fail" }[]>([]);
   const [execLogs, setExecLogs] = useState<Record<string, string[]>>({});
   const goalBoxRef = useRef<HTMLDivElement>(null);
 
@@ -235,10 +236,22 @@ export default function TasksPage() {
   async function submitGoal(textArg?: string) {
     const g = (textArg ?? goal).trim();
     if (!g || goalBusy) return;
-    setGoalBusy(true); setGoalLogs([`▶ 你对喵老板说:「${g}」`]);
+    setGoalBusy(true); setGoalLogs([`▶ 你对喵老板说:「${g}」`]); setLiveStages([]);
+    window.scrollTo({ top: 0, behavior: "smooth" });
     try {
+      const STAGE_KEY = (label: string) =>
+        label.includes("侦探") ? "detective" : label.includes("军师") ? "strategist"
+        : label.includes("销售") ? "seller" : label.includes("财务") ? "accountant" : "boss";
+      const stages: { key: string; status: "run" | "ok" | "fail" }[] = [];
       const events = await runSSE("/api/goal", { goal: g }, (e) => {
         setGoalLogs((prev) => [...prev, formatEvent(e)]);
+        if (e.type === "stage" && !e.label.includes("理解目标")) {
+          const key = STAGE_KEY(e.label);
+          const i = stages.findIndex((x) => x.key === key);
+          if (i < 0) stages.push({ key, status: e.status === "start" ? "run" : e.status === "ok" ? "ok" : "fail" });
+          else stages[i].status = e.status === "start" ? "run" : e.status === "ok" ? "ok" : "fail";
+          setLiveStages([...stages]);
+        }
       });
       const done = events.find((e) => e.type === "done");
       if (done?.taskId) {
@@ -321,8 +334,25 @@ export default function TasksPage() {
             <Play size={14} /> 一键演示
           </button>
         </div>
+        {goalBusy && liveStages.length > 0 && (
+          <div className="flex items-center gap-1.5 mt-3 flex-wrap">
+            {[["boss", "喵老板"], ["detective", "侦探喵"], ["strategist", "军师喵"], ["seller", "销售喵"], ["accountant", "财务喵"]].map(([key, name]) => {
+              const st = liveStages.find((x) => x.key === key);
+              const color = !st ? "var(--ink-3)" : st.status === "ok" ? "var(--green)" : st.status === "fail" ? "var(--red)" : "var(--brand-2)";
+              return (
+                <span key={key} className="tag flex items-center gap-1.5" style={{ color }}>
+                  <i className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: color, animation: st?.status === "run" ? "pulse-ring 1.5s ease-out infinite" : undefined }} />
+                  {name}
+                </span>
+              );
+            })}
+          </div>
+        )}
+        {goalBusy && (
+          <div className="text-[10.5px] mt-2" style={{ color: "var(--ink-3)" }}>⚡ AI 团队执行中——请停留在本页,过程会实时直播在这里</div>
+        )}
         {goalLogs.length > 0 && (
-          <div ref={goalBoxRef} className="panel2 mt-3 p-3.5 max-h-[220px] overflow-y-auto rounded-xl">
+          <div ref={goalBoxRef} className="panel2 mt-3 p-3.5 overflow-y-auto rounded-xl" style={{ maxHeight: goalBusy ? 320 : 220 }}>
             {goalLogs.map((l, i) => (
               <div key={i} className="mono text-[11.5px] leading-relaxed" style={{ color: "var(--ink-2)" }}>{l}</div>
             ))}
