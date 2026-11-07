@@ -36,13 +36,16 @@ async function runCatMissCheckInner(storeId: string): Promise<{ checked: number;
         SELECT MAX(occurred_at) FROM consumption_records r WHERE r.member_id = m.id
       ), '2000-01-01')) AS INT) AS days
     FROM cats c JOIN members m ON m.id = c.member_id
-    WHERE c.store_id = ? AND m.store_id = ?
+    WHERE c.store_id = ? AND m.store_id = ? AND c.stage != 'dormant'
   `).all(storeId, storeId) as Array<Record<string, unknown>>;
 
   let sent = 0;
   for (const r of rows) {
     const days = Number(r.days) || 0;
     if (days < 30) continue;
+    // 休眠的猫停止自主活动(DORMANT 阶段语义);主人上线唤醒后自然恢复
+    const catStage = (sqlite.prepare("SELECT stage FROM cats WHERE id = ?").get(r.cat_id) as { stage?: string } | undefined)?.stage;
+    if (catStage === "dormant") continue;
 
     // 会话:主人绑定的 H5 身份(没上线过就没有收件箱,跳过——上线机制会接管排队)
     const ident = sqlite.prepare(`

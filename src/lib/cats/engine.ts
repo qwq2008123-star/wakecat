@@ -53,6 +53,12 @@ export function energyToday(catId: string): number {
   ).get(catId, today() + "T00:00:00") as { s: number }).s;
 }
 
+/** getCatByMember 返回裸 sqlite 行(蛇形键),lastActiveAt 读取必须兼容两种键名 */
+function lastActiveOf(cat: unknown): string {
+  const c = cat as Record<string, unknown>;
+  return (c.last_active_at as string) ?? (c.lastActiveAt as string) ?? new Date().toISOString();
+}
+
 function recomputeStage(energy: number, lastActiveAt: string): CatStage {
   if (energy <= 0) return "dormant";
   if (energy < 20) return "sleeping";
@@ -64,7 +70,7 @@ function recomputeStage(energy: number, lastActiveAt: string): CatStage {
 function syncCat(catId: string) {
   const c = sqlite.prepare("SELECT * FROM cats WHERE id = ?").get(catId) as CatRow | undefined;
   if (!c) return;
-  const stage = recomputeStage(c.energy, c.lastActiveAt);
+  const stage = recomputeStage(c.energy, lastActiveOf(c));
   const level = Math.max(1, Math.min(9, 1 + Math.floor(c.bond / 15)));
   db.update(cats).set({ energy: c.energy, stage, level, updatedAt: nowIso() })
     .where(eq(cats.id, catId)).run();
@@ -85,6 +91,91 @@ export function adoptCat(storeId: string, memberId: string, name?: string) {
   };
   db.insert(cats).values(cat).run();
   return cat;
+}
+
+/* ============================================================
+   WAKE LIFE ENGINE · 生命周期可解释层
+   状态:ACTIVE 正常 / LOW(energy<20 或 3天未见→慵懒) / DORMANT(归零)
+   原则:休眠不清数据、不清亲密度、免费唤醒;能量低绝不触发营销。
+   ============================================================ */
+
+export interface CatLife {
+  stage: string;
+  why: string;
+  wokenToday: boolean;
+  sources: { care: number; inspiration: number; order: number; other: number };
+  canWake: boolean;
+}
+
+export function getCatLife(storeId: string, memberId: string): CatLife | null {
+  const cat = getCatByMember(storeId, memberId);
+  if (!cat) return null;
+  const wokenToday = !!sqlite.prepare(
+    "SELECT 1 FROM energy_transactions WHERE cat_id = ? AND action = 'free_wake' AND created_at >= ?"
+  ).get(cat.id, today() + "T00:00:00");
+  const src = sqlite.prepare(`
+    SELECT
+      COALESCE(SUM(CASE WHEN action='order_consumed' AND reversed=0 THEN delta END),0) AS ord,
+      COALESCE(SUM(CASE WHEN action IN ('daily_first_chat','effective_interaction','effective_chat') AND reversed=0 THEN delta END),0) AS care,
+      COALESCE(SUM(CASE WHEN action IN ('share_style','favorite_inspiration') AND reversed=0 THEN delta END),0) AS insp,
+      COALESCE(SUM(CASE WHEN action NOT IN ('order_consumed','daily_first_chat','effective_interaction','effective_chat','share_style','favorite_inspiration') AND reversed=0 THEN delta END),0) AS other
+    FROM energy_transactions WHERE cat_id = ?
+  `).get(cat.id) as { ord: number; care: number; insp: number; other: number };
+
+  let why = "能量充足,活力满满";
+  if (cat.stage === "dormant") {
+    why = "能量用完了,进入休眠——记忆、亲密度、成长记录全部保留,免费互动即可唤醒";
+  } else if (cat.stage === "sleeping") {
+    why = `能量低于 20(${cat.energy}/100),它今天有点慵懒,陪伴一下就会精神起来`;
+  } else if (cat.stage === "resting") {
+    why = `你 ${Math.floor((Date.now() - new Date(lastActiveOf(cat)).getTime()) / 86400_000)} 天没来,它在打盹等你——聊两句就醒`;
+  } else if (wokenToday) {
+    why = "刚被你唤醒,正在伸懒腰~";
+  }
+  return {
+    stage: cat.stage,
+    why,
+    wokenToday,
+    sources: {
+      order: Math.max(0, Number(src.ord) || 0),
+      care: Math.max(0, Number(src.care) || 0),
+      inspiration: Math.max(0, Number(src.insp) || 0),
+      other: Math.max(0, Number(src.other) || 0),
+    },
+    canWake: cat.stage === "dormant",
+  };
+}
+
+/** 商家后台:全店猫咪生命周期统计(真实数据) */
+export function getLifecycleStats(storeId: string) {
+  const byStage = sqlite.prepare(`
+    SELECT stage, COUNT(*) AS c FROM cats WHERE store_id = ? GROUP BY stage
+  `).all(storeId) as Array<{ stage: string; c: number }>;
+  const get = (st: string) => Number(byStage.find((b) => b.stage === st)?.c ?? 0);
+  const dormant = get("dormant");
+  const low = get("sleeping") + get("resting");
+  const active = get("active");
+  const woken7d = Number((sqlite.prepare(`
+    SELECT COUNT(DISTINCT et.cat_id) AS c FROM energy_transactions et
+    JOIN cats c ON c.id = et.cat_id
+    WHERE c.store_id = ? AND et.action = 'free_wake' AND et.created_at > datetime('now', '-7 day')
+  `).get(storeId) as { c: number }).c);
+  const src = sqlite.prepare(`
+    SELECT
+      COALESCE(SUM(CASE WHEN et.action='order_consumed' AND et.reversed=0 THEN et.delta END),0) AS ord,
+      COALESCE(SUM(CASE WHEN et.action IN ('daily_first_chat','effective_interaction','effective_chat') AND et.reversed=0 THEN et.delta END),0) AS care,
+      COALESCE(SUM(CASE WHEN et.action IN ('share_style','favorite_inspiration') AND et.reversed=0 THEN et.delta END),0) AS insp
+    FROM energy_transactions et JOIN cats c ON c.id = et.cat_id
+    WHERE c.store_id = ?
+  `).get(storeId) as { ord: number; care: number; insp: number };
+  const total = Math.max(1, Number(src.ord) + Number(src.care) + Number(src.insp));
+  return {
+    active, low, dormant, woken7d,
+    sources: { order: Number(src.ord), care: Number(src.care), inspiration: Number(src.insp) },
+    orderPct: Math.round((Number(src.ord) / total) * 100),
+    carePct: Math.round((Number(src.care) / total) * 100),
+    inspirationPct: Math.round((Number(src.insp) / total) * 100),
+  };
 }
 
 /** 客户自选猫造型(A-E) */
@@ -204,7 +295,7 @@ export function applyDailyDecay(catId: string, day = today()): { applied: boolea
   if (exists) return { applied: false, delta: 0 };
   const c = sqlite.prepare("SELECT * FROM cats WHERE id = ?").get(catId) as CatRow | undefined;
   if (!c) return { applied: false, delta: 0 };
-  const idleDays = Math.floor((Date.now() - new Date(c.lastActiveAt).getTime()) / 86400_000);
+  const idleDays = Math.floor((Date.now() - new Date(lastActiveOf(c)).getTime()) / 86400_000);
   const delta = -(idleDays >= 3 ? 2 : 1);
   const energy = Math.max(0, c.energy + delta);
   db.insert(catEnergyLogs).values({

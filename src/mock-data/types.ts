@@ -137,6 +137,7 @@ export interface DashboardData {
     monthCost: number;
     monthRevenue: number;
   };
+  catLife?: { active: number; low: number; dormant: number; woken7d: number; orderPct: number; carePct: number; inspirationPct: number; sources: { order: number; care: number; inspiration: number } };
   logs: WorkLog[];
   briefing: string;
 }

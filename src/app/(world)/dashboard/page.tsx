@@ -114,6 +114,45 @@ export default function DashboardPage() {
         <StatTile label="营销成本" value={`¥${fmt(k.monthCost)}`} sub={k.monthCost > 0 ? `产出比 ${(k.monthRevenue / k.monthCost).toFixed(1)} 倍` : "暂无支出"} />
       </div>
 
+      {/* 猫咪生命周期(WAKE LIFE ENGINE) */}
+      {data.catLife && (
+        <div className="surface p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-[15px] font-bold">猫咪生命周期</h2>
+            <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>WAKE LIFE ENGINE · 真实能量账本</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-4">
+            {[
+              { l: "活力中", v: data.catLife.active, c: "var(--green)" },
+              { l: "低能量/慵懒", v: data.catLife.low, c: "var(--yellow)" },
+              { l: "休眠中", v: data.catLife.dormant, c: "var(--ink-3)" },
+              { l: "近7天被唤醒", v: data.catLife.woken7d, c: "var(--brand-2)" },
+            ].map((x) => (
+              <div key={x.l} className="panel2 p-3">
+                <div className="text-[18px] font-extrabold" style={{ color: x.c }}>{x.v}</div>
+                <div className="text-[10.5px]" style={{ color: "var(--ink-3)" }}>{x.l}</div>
+              </div>
+            ))}
+          </div>
+          <div className="text-[11px] mb-1.5" style={{ color: "var(--ink-2)" }}>能量来源占比(累计)——消费是来源之一,不是全部</div>
+          <div className="flex h-2.5 rounded-full overflow-hidden gap-0.5">
+            {[
+              { l: "真实消费", v: data.catLife.sources.order, c: "var(--green)" },
+              { l: "聊天陪伴", v: data.catLife.sources.care, c: "var(--brand-2)" },
+              { l: "分享灵感", v: data.catLife.sources.inspiration, c: "var(--yellow)" },
+            ].map((x) => (
+              <motion.div key={x.l} initial={{ width: 0 }} animate={{ width: `${x.v > 0 ? Math.max(4, (x.v / Math.max(1, data.catLife!.sources.order + data.catLife!.sources.care + data.catLife!.sources.inspiration)) * 100) : 0}%` }} transition={{ duration: 0.7 }}
+                title={`${x.l} +${x.v}`} style={{ background: x.c, borderRadius: 4 }} />
+            ))}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10.5px]" style={{ color: "var(--ink-3)" }}>
+            <span>🟢 真实消费 <b style={{ color: "var(--foreground)" }}>+{data.catLife.sources.order}</b>({data.catLife.orderPct}%)</span>
+            <span>🟣 聊天陪伴 <b style={{ color: "var(--foreground)" }}>+{data.catLife.sources.care}</b>({data.catLife.carePct}%)</span>
+            <span>🟡 分享灵感 <b style={{ color: "var(--foreground)" }}>+{data.catLife.sources.inspiration}</b>({data.catLife.inspirationPct}%)</span>
+          </div>
+        </div>
+      )}
+
       {/* ④ AI 员工办公室 */}
       <div>
         <div className="flex items-center justify-between mb-3">

@@ -3,7 +3,7 @@ import { sqlite } from "@/lib/db/client";
 import { resolveStore } from "@/lib/store";
 import { ensureBootstrap } from "@/lib/bootstrap";
 import { getBoundMember } from "@/lib/customer-identity";
-import { getCatByMember, catView } from "@/lib/cats/engine";
+import { getCatByMember, catView, getCatLife } from "@/lib/cats/engine";
 import { topMemoriesForPrompt } from "@/lib/memory/extractor";
 
 /** 我的闺蜜猫:状态 + 记忆 + 最近能量流水 */
@@ -24,5 +24,6 @@ export async function GET(req: Request) {
     SELECT action, source, delta, reversed, created_at FROM energy_transactions
     WHERE cat_id = ? ORDER BY created_at DESC LIMIT 12
   `).all(cat.id);
-  return NextResponse.json({ cat, member: bound, memories, transactions });
+  const life = getCatLife(store.id, bound.member_id as string);
+  return NextResponse.json({ cat, member: bound, memories, transactions, life });
 }

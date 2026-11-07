@@ -11,8 +11,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ resource
     const { resource } = await params;
     const url = new URL(req.url);
     switch (resource) {
-      case "dashboard":
-        return NextResponse.json(await getRealDashboard(user.storeId));
+      case "dashboard": {
+        const base = await getRealDashboard(user.storeId);
+        const { getLifecycleStats } = await import("@/lib/cats/engine");
+        return NextResponse.json({ ...base, catLife: getLifecycleStats(user.storeId) });
+      }
       case "members":
         return NextResponse.json(await (await import("@/lib/queries")).listMembers(user.storeId, "all"));
       case "memories": {

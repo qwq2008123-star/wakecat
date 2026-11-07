@@ -18,6 +18,10 @@ type CatView = {
   energy: number; bond: number; level: number; stage: string;
   decorations: string[]; energyToday: number; artStyle?: string;
 };
+type CatLife = {
+  stage: string; why: string; wokenToday: boolean; canWake: boolean;
+  sources: { care: number; inspiration: number; order: number; other: number };
+};
 type Card =
   | { type: "services"; title: string; items: { id: string; name: string; price: number; durationMin: number; isNew: boolean }[] }
   | { type: "slots"; items: { date: string; weekday: string; staff: string; time: string }[] }
@@ -40,6 +44,7 @@ export default function CustomerPage({ params }: { params: Promise<{ storeSlug: 
   const [visitorId, setVisitorId] = useState("");
   const [bound, setBound] = useState<{ name: string; level: string } | null>(null);
   const [cat, setCat] = useState<CatView | null>(null);
+  const [life, setLife] = useState<CatLife | null>(null);
   const [tab, setTab] = useState<"home" | "chat" | "inspire" | "growth">("home");
   const [showBind, setShowBind] = useState(false);
   const [code, setCode] = useState("");
@@ -50,7 +55,8 @@ export default function CustomerPage({ params }: { params: Promise<{ storeSlug: 
     const r = await fetch(`/api/cats/mine?visitorId=${vid}&storeSlug=${storeSlug}`).then((x) => x.json()).catch(() => null);
     setBound(r?.member ?? null);
     setCat(r?.cat ?? null);
-  }, []);
+    setLife(r?.life ?? null);
+  }, [storeSlug]);
 
   useEffect(() => {
     let vid = localStorage.getItem("wxcat_visitor");
@@ -77,6 +83,7 @@ export default function CustomerPage({ params }: { params: Promise<{ storeSlug: 
     });
     const j = await r.json();
     if (j.cat) setCat(j.cat);
+    await refresh(visitorId); // 同步生命周期解释与唤醒徽标
   }
 
   const catState = !cat ? "sleep" : cat.stage === "active" ? "happy" : cat.stage === "resting" ? "drowsy" : "sleep";
@@ -115,6 +122,17 @@ export default function CustomerPage({ params }: { params: Promise<{ storeSlug: 
                   <div className="text-[11.5px] mt-0.5" style={{ color: cat && cat.stage === "dormant" ? "var(--red)" : "var(--ink-2)" }}>
                     {cat ? STAGE_LABEL[cat.stage] ?? cat.stage : "绑定会员,领养你的专属闺蜜猫"}
                   </div>
+                  {life && (
+                    <div className="text-[11px] mt-1.5 mx-auto max-w-[300px] leading-relaxed" style={{ color: "var(--ink-3)" }}>
+                      {life.why}
+                    </div>
+                  )}
+                  {life?.wokenToday && (
+                    <motion.div initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                      className="tag mt-2" style={{ color: "var(--green)", borderColor: "var(--green)" }}>
+                      🌅 刚被你唤醒,能量恢复到 25
+                    </motion.div>
+                  )}
                   {cat && <div className="text-[11px] mt-1 italic" style={{ color: "var(--ink-3)" }}>{cat.personality}</div>}
                   {cat && cat.stage === "dormant" && (
                     <button className="btn btn-orange btn-sm mt-3" onClick={wake}>🌙 免费唤醒(不花钱)</button>
@@ -133,6 +151,21 @@ export default function CustomerPage({ params }: { params: Promise<{ storeSlug: 
                         style={{ background: "linear-gradient(90deg, var(--orange), var(--yellow))" }} />
                     </div>
                     <div className="text-[10.5px] mt-1.5" style={{ color: "var(--ink-3)" }}>今日已获得 {cat.energyToday}</div>
+                    {life && (
+                      <div className="mt-2 space-y-1">
+                        {[
+                          { l: "真实消费", v: life.sources.order, c: "var(--green)" },
+                          { l: "聊天陪伴", v: life.sources.care, c: "var(--brand-2)" },
+                          { l: "分享灵感", v: life.sources.inspiration, c: "var(--yellow)" },
+                        ].map((x) => (
+                          <div key={x.l} className="flex items-center gap-1.5 text-[9.5px]" style={{ color: "var(--ink-3)" }}>
+                            <i className="inline-block w-1 h-1 rounded-full" style={{ background: x.c }} />
+                            {x.l}
+                            <span className="ml-auto mono">+{x.v}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="surface p-4">
                     <div className="flex items-center gap-1.5 text-[11.5px] font-bold" style={{ color: "#FF5F7E" }}>
