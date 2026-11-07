@@ -6,7 +6,7 @@ import {
   getLlmConfig, LlmConfig, runToolLoop, ToolSchema, ChatMessage,
 } from "./llm";
 import {
-  createGoalTask, updateTask, getTask, appendLog, queueAndSend, SessionUserLike, grantCoupon,
+  createGoalTask, updateTask, getTask, appendLog, queueAndSend, SessionUserLike, grantCoupon, decideTask,
 } from "./services";
 import { runOpportunityScan } from "./sales/opportunity-engine";
 
@@ -626,9 +626,16 @@ export async function runOrchestrator(user: SessionUserLike, goal: string, emit:
   const strat = await runStrategist(ctx);
   emit({ type: "log", agent: "喵老板", step: "验收", message: strat.summary || "军师喵完成策略" });
 
-  // 4. 待审批
+  // 4. 待审批(全自动模式开启时,自动批准并执行——闸门照常生效)
   await updateTask(taskId, { status: "pending_approval" });
   await appendLog({ taskId, agent: "喵老板", step: "提交审批", message: "计划与成本已就绪,等待商家批准后才会触达任何会员" });
+  if (config.autoRun) {
+    await appendLog({ taskId, agent: "喵老板", step: "全自动模式", message: "商家已开启全自动模式:自动批准并执行;授权/频次/预算三闸门照常拦截,全程留痕" });
+    emit({ type: "log", agent: "喵老板", step: "全自动模式", message: "已自动批准(全自动模式开启),销售喵开始执行" });
+    await decideTask(user, taskId, true);
+    await executeApprovedTask(user, taskId, emit);
+    return { taskId, title };
+  }
   emit({ type: "done", taskId, title, status: "pending_approval", summary: `任务「${title}」已就绪等待批准:${planSummary}` });
   return { taskId, title };
 }

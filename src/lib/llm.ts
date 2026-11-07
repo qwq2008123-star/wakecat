@@ -9,6 +9,7 @@ export type LlmConfig = {
   apiKey: string | null;
   engineMode: "auto" | "llm" | "rules";
   mockFailRate: number;
+  autoRun: boolean;
 };
 
 export async function getLlmConfig(storeId: string): Promise<LlmConfig> {
@@ -21,6 +22,7 @@ export async function getLlmConfig(storeId: string): Promise<LlmConfig> {
     apiKey: c?.apiKey ?? process.env.GLM_API_KEY ?? null,
     engineMode: (c?.engineMode as LlmConfig["engineMode"]) ?? "auto",
     mockFailRate: c?.mockFailRate ?? 0.08,
+    autoRun: !!c?.autoRun,
   };
 }
 

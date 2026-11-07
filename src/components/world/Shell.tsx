@@ -2,11 +2,12 @@
 
 /* 全局壳:左侧导航(桌面)/ 抽屉(移动)+ 顶栏 */
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import {
+  usePathname } from "next/navigation";
 import { useState, ReactNode } from "react";
 import {
   LayoutDashboard, Cat, UsersRound, ClipboardList, BookOpen,
-  TrendingUp, Bell, Menu, X,
+  TrendingUp, Bell, Menu, X, Settings,
   MessageSquareText,
 } from "lucide-react";
 import CatCharacter from "./CatCharacter";
@@ -20,6 +21,7 @@ const NAV = [
   { href: "/memory", label: "记忆博物馆", icon: BookOpen },
   { href: "/inbox", label: "会话接管", icon: MessageSquareText },
   { href: "/finance", label: "收益中心", icon: TrendingUp },
+  { href: "/settings", label: "系统设置", icon: Settings },
 ];
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {

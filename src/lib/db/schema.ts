@@ -178,6 +178,7 @@ export const agentConfigs = sqliteTable("agent_configs", {
   apiKey: text("api_key"), // 仅服务端可读,前端只显示掩码
   engineMode: text("engine_mode").notNull().default("auto"), // auto | llm | rules
   mockFailRate: real("mock_fail_rate").notNull().default(0.08),
+  autoRun: integer("auto_run").notNull().default(0), // 全自动模式:编排完成自动批准+执行(闸门照常)
   updatedAt: text("updated_at").notNull(),
 });
 

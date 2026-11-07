@@ -90,7 +90,7 @@ export async function getTask(taskId: string) {
 }
 
 /** 商家审批:仅 owner,且必须是 pending_approval 状态;全程审计 */
-export async function decideTask(user: SessionUser, taskId: string, approve: boolean) {
+export async function decideTask(user: SessionUserLike, taskId: string, approve: boolean) {
   const t = await getTask(taskId);
   if (!t || t.storeId !== user.storeId) throw new HttpError(404, "任务不存在");
   if (t.status !== "pending_approval") throw new HttpError(400, `当前状态为 ${t.status},不可审批`);
@@ -423,7 +423,7 @@ export async function grantCoupon(user: SessionUserLike, taskId: string, memberI
 
 /* ---------- 设置 ---------- */
 export async function updateAgentConfig(user: SessionUser, patch: {
-  apiKey?: string | null; model?: string; engineMode?: string; mockFailRate?: number; baseUrl?: string;
+  apiKey?: string | null; model?: string; engineMode?: string; mockFailRate?: number; baseUrl?: string; autoRun?: boolean;
 }) {
   if (user.role !== "owner") throw new HttpError(403, "仅老板可修改设置");
   const rows = await db.select().from(agentConfigs).where(eq(agentConfigs.storeId, user.storeId)).limit(1);
@@ -435,6 +435,7 @@ export async function updateAgentConfig(user: SessionUser, patch: {
     baseUrl: patch.baseUrl ?? cur.baseUrl,
     engineMode: patch.engineMode ?? cur.engineMode,
     mockFailRate: patch.mockFailRate ?? cur.mockFailRate,
+    autoRun: patch.autoRun !== undefined ? (patch.autoRun ? 1 : 0) : (cur as { autoRun?: number }).autoRun ?? 0,
     updatedAt: now(),
   }).where(eq(agentConfigs.id, cur.id));
   await audit(user.name, "settings.update", cur.id, {

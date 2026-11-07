@@ -245,6 +245,7 @@ export async function getLlmStatus(storeId: string) {
   return {
     engineMode: c.engineMode, model: c.model,
     hasKey: !!c.apiKey, provider: c.provider, mockFailRate: c.mockFailRate,
+    autoRun: c.autoRun,
     keyMasked: c.apiKey ? c.apiKey.slice(0, 6) + "****" : null,
   };
 }

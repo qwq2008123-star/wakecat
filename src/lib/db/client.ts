@@ -30,6 +30,9 @@ function openDb(): Database.Database {
     if (!cols("orders").includes("attribution")) {
       raw.exec("ALTER TABLE orders ADD COLUMN attribution TEXT NOT NULL DEFAULT 'natural'");
     }
+    if (!cols("agent_configs").includes("auto_run")) {
+      raw.exec("ALTER TABLE agent_configs ADD COLUMN auto_run INTEGER NOT NULL DEFAULT 0");
+    }
     for (const col of ["service_name TEXT", "staff_name TEXT", "scheduled_for TEXT", "source TEXT NOT NULL DEFAULT 'seller'"]) {
       const name = col.split(" ")[0];
       if (!cols("appointments").includes(name)) {
