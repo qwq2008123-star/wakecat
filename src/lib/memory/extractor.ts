@@ -128,7 +128,7 @@ async function llmExtract(text: string, config: LlmConfig, memberName: string): 
         memoryType: x.memory_type as MemoryType,
         category: String(x.category ?? "偏好"),
         attribute: String(x.attribute ?? "偏好"),
-        value: String(x.value).slice(0, 60),
+        value: String(x.value).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "").trim().slice(0, 60),
         confidence: Math.min(1, Math.max(0.3, Number(x.confidence) || 0.7)),
       }));
   } catch {

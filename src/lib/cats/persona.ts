@@ -57,16 +57,22 @@ ${memories.length ? memories.map((m) => "- " + m).join("\n") : "(还不太了解
           temperature: 0.85,
           max_tokens: 300,
         }),
-        signal: AbortSignal.timeout(15_000),
+        signal: AbortSignal.timeout(20_000),
       });
-      if (res.ok) {
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        console.error(`[bestieReply] GLM HTTP ${res.status}: ${errBody.slice(0, 200)}`);
+      } else {
         const data = await res.json();
         const reply = data.choices?.[0]?.message?.content;
         if (reply) {
-          return { text: reply.trim(), cards: [], quickReplies: defaultQuick(text), engine: "llm" };
+          return { text: reply.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "").trim(), cards: [], quickReplies: defaultQuick(text), engine: "llm" };
         }
+        console.error("[bestieReply] GLM 返回 200 但无 content:", JSON.stringify(data).slice(0, 300));
       }
-    } catch { /* 降级到规则 */ }
+    } catch (e) {
+      console.error("[bestieReply] GLM 调用异常:", e instanceof Error ? e.message : e);
+    }
   }
 
   /* ---------- 规则兜底:基于记忆的模板(诚实标注由调用方处理) ---------- */

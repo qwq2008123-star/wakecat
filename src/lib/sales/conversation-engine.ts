@@ -33,7 +33,7 @@ const rid = (p: string) => `${p}_${randomUUID().replace(/-/g, "").slice(0, 12)}`
 const nowIso = () => new Date().toISOString();
 const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 
-interface PendingContext {
+export interface PendingContext {
   action?: "choose_service" | "choose_slot";
   services?: CatalogService[];
   chosen?: CatalogService;
@@ -89,7 +89,7 @@ function isConfirm(text: string): boolean {
 }
 
 /* ---------- 工具:真实排班查询 ---------- */
-function getSlots(storeId: string, filter: { weekday?: string; date?: string } = {}): { date: string; weekday: string; staff: string; time: string }[] {
+export function getSlots(storeId: string, filter: { weekday?: string; date?: string } = {}): { date: string; weekday: string; staff: string; time: string }[] {
   const rows = sqlite.prepare(`
     SELECT work_date, staff_name, start_at, end_at FROM store_staff_schedules
     WHERE store_id = ? AND work_date >= ? ORDER BY work_date ASC, staff_name ASC LIMIT 40
@@ -109,7 +109,7 @@ function getSlots(storeId: string, filter: { weekday?: string; date?: string } =
 }
 
 /* ---------- 会话与上下文 ---------- */
-function getOrCreateConversation(storeId: string, identityId: string, channel: string): string {
+export function getOrCreateConversation(storeId: string, identityId: string, channel: string): string {
   const existing = sqlite.prepare(
     "SELECT id FROM conversations WHERE identity_id = ? AND status='open' ORDER BY created_at DESC LIMIT 1"
   ).get(identityId) as { id: string } | undefined;
@@ -121,7 +121,7 @@ function getOrCreateConversation(storeId: string, identityId: string, channel: s
   return id;
 }
 
-function loadPending(conversationId: string): PendingContext {
+export function loadPending(conversationId: string): PendingContext {
   const row = sqlite.prepare(`
     SELECT meta_json FROM conversation_messages
     WHERE conversation_id = ? AND direction='out' ORDER BY created_at DESC, rowid DESC LIMIT 1

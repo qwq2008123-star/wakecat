@@ -4,6 +4,7 @@ import { ensureBootstrap } from "@/lib/bootstrap";
 import { getBoundMember } from "@/lib/customer-identity";
 import { adoptCat, touchCat, awardEnergy, awardBond, catView } from "@/lib/cats/engine";
 import { handleCustomerMessage } from "@/lib/sales/conversation-engine";
+import { getOrCreateConversation, loadPending } from "@/lib/sales/conversation-engine";
 import { bestieReply } from "@/lib/cats/persona";
 import { extractAndSave } from "@/lib/memory/extractor";
 import { getLlmConfig } from "@/lib/llm";
@@ -46,13 +47,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ storeSl
     strategyHint: "", joinedAt: "", catName: cat.name,
   };
 
-  // 销售意图(预约/询价/优惠)→ 确定性技能(真实目录/排班/预约);其余 → 闺蜜人格
+  // 路由优先级:① 有 pending 上下文(选时段/选服务)→ 回 conversation-engine
+  //            ② 销售意图关键词 → conversation-engine
+  //            ③ 其余 → 闺蜜人格
+  const identityId = `h5:${visitorId}`;
+  const convId = getOrCreateConversation(store.id, identityId, "h5");
+  const pending = loadPending(convId);
   const salesIntent = /(预约|有空|多少钱|价格|优惠|会员权益|推荐|新品|款式|预算)/.test(text);
+  const hasPending = !!pending.action;
   let text2: string, cards: unknown[] = [], quickReplies: string[] = [], stage = "chat", engine: string = config.apiKey ? "llm" : "rules";
 
-  if (salesIntent) {
+  if (hasPending || salesIntent) {
     const r = handleCustomerMessage({
-      storeId: store.id, identityId: `h5:${visitorId}`, memberId: bound.member_id as string,
+      storeId: store.id, identityId, memberId: bound.member_id as string,
       member: memberView, message: text,
     });
     text2 = r.text; cards = r.cards; quickReplies = r.quickReplies; stage = r.stage;
