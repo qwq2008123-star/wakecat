@@ -8,7 +8,7 @@ export type MemberRow = {
   id: string; name: string; phoneMasked: string; level: string;
   tags: string[]; joinedAt: string; isDemo: number;
   daysSinceVisit: number | null; totalSpend: number; visits: number;
-  lastService: string | null; state: CatState; catName: string; catColorway: string;
+  lastService: string | null; state: CatState; zone: string; catName: string; catColorway: string;
   catLv: number; catXp: number; decorations: string[];
 };
 
@@ -49,15 +49,25 @@ export async function listMembers(
   `, storeId);
   const mapped: MemberRow[] = rows.map((r) => {
     const tags = JSON.parse((r.tags_json as string) || "[]");
+    const days = daysSince(r.last_visit as string | null);
+    const state = catStateOf(days, tags);
+    const spend = (r.total_spend as number) || 0;
+    // 生态街区归属:庄园(高消费) > 警戒(卡临期) > 森林(沉睡) > 街区(活跃)
+    const zone = spend >= 800 ? "premium"
+      : tags.includes("卡快过期") ? "risk"
+      : state === "hibernate" ? "sleeping"
+      : state === "drowsy" ? "sleeping"
+      : "active";
     return {
       id: r.id as string, name: r.name as string, phoneMasked: r.phone_masked as string,
       level: r.level as string, tags,
       joinedAt: r.joined_at as string, isDemo: r.is_demo as number,
-      daysSinceVisit: daysSince(r.last_visit as string | null),
-      totalSpend: (r.total_spend as number) || 0,
+      daysSinceVisit: days,
+      totalSpend: spend,
       visits: (r.visits as number) || 0,
       lastService: (r.last_service as string) || null,
-      state: catStateOf(daysSince(r.last_visit as string | null), tags),
+      state,
+      zone: zone as MemberRow["zone"],
       catName: (r.cat_name as string) || "未命名",
       catColorway: (r.colorway as string) || "orange",
       catLv: (r.lv as number) || 1,
