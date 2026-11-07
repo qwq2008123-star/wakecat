@@ -11,15 +11,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ storeSlu
   if (!store) return NextResponse.json({ error: "店铺不存在" }, { status: 404 });
   const visitorId = new URL(req.url).searchParams.get("visitorId");
   if (!visitorId) return NextResponse.json({ messages: [] });
-  const ident = sqlite.prepare(
-    "SELECT id FROM customer_identities WHERE store_id = ? AND channel='h5' AND external_user_id = ?"
-  ).get(store.id, visitorId) as { id: string } | undefined;
-  if (!ident) return NextResponse.json({ messages: [] });
+  // 会话由 chat 路由以 identity_id = 'h5:'+visitorId 创建;兼容旧的 identity 行主键写法
   const rows = sqlite.prepare(`
     SELECT direction, content, meta_json, created_at FROM conversation_messages
-    WHERE conversation_id = (SELECT id FROM conversations WHERE identity_id = ? ORDER BY created_at DESC LIMIT 1)
+    WHERE conversation_id = (
+      SELECT id FROM conversations
+      WHERE identity_id = ? OR identity_id = (
+        SELECT id FROM customer_identities WHERE store_id = ? AND channel='h5' AND external_user_id = ?
+      )
+      ORDER BY created_at DESC LIMIT 1
+    )
     ORDER BY created_at ASC, rowid ASC
-  `).all(ident.id) as Array<Record<string, unknown>>;
+  `).all(`h5:${visitorId}`, store.id, visitorId) as Array<Record<string, unknown>>;
   return NextResponse.json({
     messages: rows.map((r) => ({
       direction: r.direction as string,

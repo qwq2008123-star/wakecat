@@ -88,6 +88,15 @@ function isConfirm(text: string): boolean {
   return /(好的|好呀|好啊|可以|行|就这个|就它|确认|没问题|嗯|对|ok|OK|再约)/.test(text);
 }
 
+/** 用户在消息里点名的服务:全名命中优先;退而按风格关键词匹配目录 */
+function findMentionedServices(storeId: string, text: string): CatalogService[] {
+  const catalog = getCatalog(storeId);
+  const byName = catalog.filter((s) => text.includes(s.name));
+  if (byName.length) return byName;
+  const kw = /(猫眼|法式|渐变|极光|碎钻|手绘|护理|卸甲|跳色|纯色|晕染|贴钻|延长|美睫)/.exec(text)?.[1];
+  return kw ? catalog.filter((s) => s.name.includes(kw)) : [];
+}
+
 /* ---------- 工具:真实排班查询 ---------- */
 export function getSlots(storeId: string, filter: { weekday?: string; date?: string } = {}): { date: string; weekday: string; staff: string; time: string }[] {
   const rows = sqlite.prepare(`
@@ -298,15 +307,23 @@ export function handleCustomerMessage(opts: {
       ? `${greetName},最近的可预约时段如下(都来自店里真实排班)。选定后我直接帮你约上~`
       : "最近的可预约时段如下。绑定会员后我还能记住你的偏好哦~");
     const slotQuick = slots.slice(0, 3).map((s) => `${s.weekday}(${s.date.slice(5)})`);
-    // 选时段前需要先定服务:给默认热门服务候选
+    // 选时段前需要先定服务:用户点名的服务优先,否则给默认热门服务候选
+    const mentioned = findMentionedServices(storeId, text);
     const rec = recommendServices({ storeId, favoriteService: member?.favoriteService ?? null, limit: 1 });
-    if (rec[0]) {
-      const services = [rec[0].service, ...recommendServices({ storeId, limit: 3 }).map((r) => r.service)
-        .filter((s) => s.id !== rec[0].service.id)];
+    const primary = mentioned[0] ?? rec[0]?.service;
+    if (primary) {
+      const services = [
+        primary,
+        ...recommendServices({ storeId, limit: 3 }).map((r) => r.service)
+          .filter((s) => s.id !== primary.id),
+      ];
+      const fromName = mentioned.length > 0;
       const reply: ChatReply = {
-        text: `${intro}\n\n先定个项目:要做「${rec[0].service.name}」(¥${rec[0].service.price} · ${rec[0].service.durationMin} 分钟)吗?回「1」或「好的」确认,也可以告诉我想做的项目~`,
+        text: fromName
+          ? `${intro}\n\n要做的就是「${primary.name}」(¥${primary.price} · ${primary.durationMin} 分钟)——回「1」或「好的」确认,也可以换别的项目~`
+          : `${intro}\n\n先定个项目:要做「${primary.name}」(¥${primary.price} · ${primary.durationMin} 分钟)吗?回「1」或「好的」确认,也可以告诉我想做的项目~`,
         cards: [{ type: "slots", items: slots }],
-        quickReplies: ["确认做" + rec[0].service.name, "看看其他款式"],
+        quickReplies: ["确认做" + primary.name, "看看其他款式"],
         stage: "booking_service",
       };
       saveOut(convId, reply, { action: "choose_service", services, slots });

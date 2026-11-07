@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sqlite } from "@/lib/db/client";
 import { resolveStore } from "@/lib/store";
 import { ensureBootstrap } from "@/lib/bootstrap";
 import { getBoundMember } from "@/lib/customer-identity";
@@ -47,12 +48,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ storeSl
     strategyHint: "", joinedAt: "", catName: cat.name,
   };
 
-  // 路由:只按销售意图关键词路由到 conversation-engine(真实排班/目录/预约),
-  //       其余全部走闺蜜人格(LLM 带记忆)。conversation-engine 的 pending
-  //       上下文由 handleCustomerMessage 内部检查。
+  // 路由:有未完成的预约上下文(5 分钟内的 pending)或销售意图关键词时,
+  //       进 conversation-engine 确定性技能(真实排班/目录/预约)——
+  //       「好的」「1」这类确认语没有关键词,必须靠 pending 接上流程;
+  //       其余全部走闺蜜人格(LLM 带记忆)。
   const identityId = `h5:${visitorId}`;
-  getOrCreateConversation(store.id, identityId, "h5");
-  const salesIntent = /(预约|有空|多少钱|价格|优惠|会员权益|推荐|新品|款式|预算|做「|周三|周四|周五|周六|周日|周一|周二)/.test(text);
+  const convId = getOrCreateConversation(store.id, identityId, "h5");
+  // 会话归属:绑定会员后把 member_id 回写会话,B 端收件箱才能显示真人
+  sqlite.prepare("UPDATE conversations SET member_id = ? WHERE id = ? AND member_id IS NULL")
+    .run(bound.member_id as string, convId);
+  const pending = loadPending(convId);
+  const salesIntent = !!pending.action
+    || /(预约|有空|多少钱|价格|优惠|会员权益|推荐|新品|款式|预算|做「|周三|周四|周五|周六|周日|周一|周二)/.test(text)
+    // 不满/投诉必须进确定性引擎:暂停营销、转老板娘,不能让闺蜜人格嘻嘻哈哈接住
+    || /(不满意|投诉|差评|态度|退款)/.test(text);
   let text2: string, cards: unknown[] = [], quickReplies: string[] = [], stage = "chat", engine: string = config.apiKey ? "llm" : "rules";
 
   if (salesIntent) {
