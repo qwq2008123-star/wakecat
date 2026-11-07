@@ -23,7 +23,7 @@ type Card =
   | { type: "slots"; items: { date: string; weekday: string; staff: string; time: string }[] }
   | { type: "appointment"; appointmentId: string; service: string; when: string; staff: string }
   | { type: "unsubscribed" } | { type: "transferred" };
-interface Msg { from: "user" | "emp"; text: string; cards?: Card[]; quick?: string[]; engine?: string; newMemories?: string[]; image?: string; pollId?: string }
+interface Msg { from: "user" | "emp"; text: string; cards?: Card[]; quick?: string[]; engine?: string; newMemories?: string[]; image?: string; pollId?: string; commercial?: boolean }
 interface MemoryRow {
   id: string; memory_type: string; category: string;
   attribute: string; value: string; user_confirmed: number; updated_at: string;
@@ -265,7 +265,7 @@ function BestieChatPanel({ storeSlug, visitorId, bound, catName, onEnergy, seed,
         const hist: Msg[] = [];
         for (const m of (j.messages ?? []) as Array<{
           direction: string; content: string; human: boolean; channel: string;
-          imagePath?: string | null; catName?: string | null; createdAt: string;
+          commercial?: boolean; imagePath?: string | null; catName?: string | null; createdAt: string;
         }>) {
           if (m.direction === "in") {
             hist.push({ from: "user", text: m.content === "[图片]" ? "看看这张~" : m.content, image: m.imagePath ?? undefined });
@@ -278,7 +278,7 @@ function BestieChatPanel({ storeSlug, visitorId, bound, catName, onEnergy, seed,
               from: "emp",
               text: label ? `${label}: ${m.content}` : m.content,
               image: m.imagePath ?? undefined,
-              engine: m.channel === "cat" ? undefined : undefined,
+              commercial: m.commercial,
             });
           }
         }
@@ -311,10 +311,10 @@ function BestieChatPanel({ storeSlug, visitorId, bound, catName, onEnergy, seed,
           const label = last.channel === "cat-miss"
             ? `🐱 ${catName ?? "猫咪"}想你啦`
             : last.channel === "in-site"
-            ? "💌 店铺消息"
+            ? (last.commercial ? "🛍 店铺推荐" : "💌 店铺消息")
             : last.human ? "💬 芳姐(老板娘)" : null;
           if (!label) return prev;
-          return [...prev, { from: "emp", text: `${label}: ${last.content}`, pollId: `${last.createdAt}` }];
+          return [...prev, { from: "emp", text: `${label}: ${last.content}`, pollId: `${last.createdAt}`, commercial: Boolean(last.commercial) }];
         });
       } catch { /* 静默轮询 */ }
     }, 15000);
@@ -397,6 +397,33 @@ function BestieChatPanel({ storeSlug, visitorId, bound, catName, onEnergy, seed,
               <span className="text-[10px] mt-1" style={{ color: "var(--ink-3)" }}>
                 {String(m.engine).startsWith("llm") ? "✦ GLM 真模型" : "⚙ 规则引擎(演示)"}
               </span>
+            )}
+            {m.commercial && m.from === "emp" && (
+              <span className="tag tag-yellow text-[9.5px]">🛍 商业推荐</span>
+            )}
+            {m.commercial && m.from === "emp" && (
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { label: "🙏 不感兴趣,少推这类", act: "reject" },
+                  { label: "暂停商业推荐", act: "pause" },
+                  { label: "关闭商业推荐", act: "off" },
+                ].map((b) => (
+                  <button key={b.act} className="tag text-[10px] hover:opacity-70"
+                    onClick={async () => {
+                      const body = b.act === "off" ? { allowCommercial: false }
+                        : b.act === "pause" ? { weeklyCap: 0 }
+                        : { reject: "商业推荐" };
+                      await fetch(`/api/customer/${storeSlug}/preferences`, {
+                        method: "PUT", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ visitorId, ...body }),
+                      });
+                      setMsgs((m) => [...m, { from: "emp", text: b.act === "off"
+                        ? "好,以后不再发商业推荐了。我还在,随时找我聊天 🐾"
+                        : b.act === "pause" ? "好,商业推荐先停了。想恢复随时告诉我。"
+                        : "记住了,这类内容以后少推。不耽误我们聊天~" }]);
+                    }}>{b.label}</button>
+                ))}
+              </div>
             )}
             {m.newMemories?.map((n) => (
               <span key={n} className="tag tag-green text-[10px]">🧠 记住了:{n}</span>
@@ -579,6 +606,8 @@ function GrowthPanel({ storeSlug, visitorId, cat, onRefresh }: {
           ))}
         </div>
       </div>
+
+      <ContactPrefsCard storeSlug={storeSlug} visitorId={visitorId} />
 
       <div className="surface p-5">
         <div className="flex items-center gap-2 text-[14px] font-bold mb-3">
@@ -772,4 +801,70 @@ async function fileToCompressedDataUrl(file: File, max = 720, quality = 0.8): Pr
   canvas.getContext("2d")!.drawImage(bitmap, 0, 0, w, h);
   bitmap.close();
   return canvas.toDataURL("image/jpeg", quality);
+}
+
+/* ================= 2.0 · 联系偏好(客户的控制台) ================= */
+function ContactPrefsCard({ storeSlug, visitorId }: { storeSlug: string; visitorId: string }) {
+  const [prefs, setPrefs] = useState<Record<string, unknown> | null>(null);
+  const load = useCallback(async () => {
+    if (!visitorId) return;
+    try {
+      setPrefs(await fetch(`/api/customer/${storeSlug}/preferences?visitorId=${visitorId}`).then((x) => x.json()));
+    } catch { /* 静默 */ }
+  }, [storeSlug, visitorId]);
+  useEffect(() => { load(); }, [load]);
+
+  async function save(patch: Record<string, unknown>) {
+    const next = await fetch(`/api/customer/${storeSlug}/preferences`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ visitorId, ...patch }),
+    }).then((x) => x.json()).catch(() => null);
+    if (next) setPrefs(next);
+  }
+
+  if (!prefs) return null;
+  const T = ({ k, label, desc }: { k: string; label: string; desc: string }) => {
+    const on = Boolean(prefs[k]);
+    return (
+      <button className="w-full panel2 px-3.5 py-3 flex items-center gap-3 text-left"
+        onClick={() => save({ [k]: !on })}>
+        <div className="flex-1 min-w-0">
+          <div className="text-[13px] font-semibold">{label}</div>
+          <div className="text-[10.5px]" style={{ color: "var(--ink-3)" }}>{desc}</div>
+        </div>
+        <span className="w-9 h-5 rounded-full relative transition-colors shrink-0"
+          style={{ background: on ? "var(--green)" : "var(--line)" }}>
+          <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
+            style={{ left: on ? 18 : 2 }} />
+        </span>
+      </button>
+    );
+  };
+  return (
+    <div className="surface p-5">
+      <div className="flex items-center gap-2 text-[14px] font-bold mb-1">
+        <Heart size={14} style={{ color: "var(--pink, #FF5F7E)" }} /> 联系偏好
+        <span className="text-[10.5px] font-normal ml-auto" style={{ color: "var(--ink-3)" }}>你的选择,猫咪永远尊重</span>
+      </div>
+      <p className="text-[11.5px] mb-3" style={{ color: "var(--ink-2)" }}>
+        关闭商业推荐不影响猫咪陪伴和聊天,亲密度、能量也不受任何影响。
+      </p>
+      <div className="space-y-2">
+        <T k="allowCommercial" label="允许商业推荐" desc="关闭后:优惠券/新品/活动一律不打扰(默认关闭)" />
+        <T k="allowNewItems" label="允许新品推荐" desc="只推和你收藏/偏好方向相近的新款" />
+        <T k="allowPromotions" label="允许优惠活动" desc="只提醒你手里真实存在的未使用权益" />
+        <T k="allowAppointmentReminder" label="预约/售后提醒" desc="服务性通知,和营销分开计" />
+      </div>
+      <div className="panel2 px-3.5 py-3 mt-2 flex items-center gap-3">
+        <div className="flex-1">
+          <div className="text-[13px] font-semibold">每周商业消息上限</div>
+          <div className="text-[10.5px]" style={{ color: "var(--ink-3)" }}>超过即沉默,后端强制执行</div>
+        </div>
+        <select className="input !w-20 !py-1.5" value={String(prefs.weeklyCap ?? 1)}
+          onChange={(e) => save({ weeklyCap: Number(e.target.value) })}>
+          {[0, 1, 2, 3].map((n) => <option key={n} value={n}>{n} 条</option>)}
+        </select>
+      </div>
+    </div>
+  );
 }

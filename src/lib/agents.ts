@@ -414,7 +414,7 @@ export async function runStrategist(ctx: Ctx) {
 
 /* ---------- 销售喵 ---------- */
 export async function runSeller(ctx: Ctx, user: SessionUserLike) {
-  const sent = { total: 0, ok: 0, failed: 0 };
+  const sent = { total: 0, ok: 0, failed: 0, silent: 0 };
   const execute = async (name: string, args: unknown) => {
     const a = args as Record<string, unknown>;
     switch (name) {
@@ -446,6 +446,9 @@ export async function runSeller(ctx: Ctx, user: SessionUserLike) {
             await grantCoupon(user, ctx.taskId, st.member_id, name, st.predicted_cost);
             ctx.emit({ type: "log", agent: "销售喵", step: "券已入账", message: `已真实发放 ${name} ¥${st.predicted_cost},客户报手机号即可核销` });
           }
+        } else if ((r as { silent?: boolean }).silent) {
+          // 决策引擎判定沉默:如实计入,不是失败
+          sent.silent = (sent.silent ?? 0) + 1;
         } else sent.failed++;
         return r;
       }
@@ -473,6 +476,7 @@ export async function runSeller(ctx: Ctx, user: SessionUserLike) {
         try {
           const out = await queueAndSend(user, ctx.taskId, r.id as string);
           sent.total++;
+          if ((out as { silent?: boolean }).silent) sent.silent = (sent.silent ?? 0) + 1;
           if (out.ok) sent.ok++; else sent.failed++;
         } catch (e) {
           sent.total++; sent.failed++;

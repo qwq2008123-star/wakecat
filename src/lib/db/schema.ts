@@ -478,3 +478,41 @@ export const merchantActions = sqliteTable("merchant_actions", {
   createdAt: text("created_at").notNull(),
   actedAt: text("acted_at"),
 });
+
+/* ---------- WAKECAT 2.0:主动联系决策引擎 ---------- */
+export const contactDecisions = sqliteTable("contact_decisions", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull(),
+  memberId: text("member_id").notNull(),
+  decision: text("decision").notNull(), // contact | stay_silent | needs_review
+  category: text("category").notNull().default("commercial"), // commercial | appointment_reminder
+  needType: text("need_type"),
+  reason: text("reason").notNull(),
+  evidenceJson: text("evidence_json").notNull().default("[]"),
+  relevance: real("relevance").notNull().default(0),
+  usefulness: real("usefulness").notNull().default(0),
+  timing: real("timing").notNull().default(0),
+  consentStatus: text("consent_status").notNull().default("unknown"),
+  totalScore: real("total_score").notNull().default(0),
+  taskId: text("task_id"),
+  strategyId: text("strategy_id"),
+  serviceName: text("service_name"),
+  dedupeKey: text("dedupe_key"),
+  outcome: text("outcome"), // sent | approved | superseded | null
+  createdAt: text("created_at").notNull(),
+});
+
+export const customerPreferences = sqliteTable("customer_preferences", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull(),
+  memberId: text("member_id").notNull().unique(),
+  allowCommercial: integer("allow_commercial").notNull().default(0), // 默认:无商业授权
+  allowAppointmentReminder: integer("allow_appointment_reminder").notNull().default(1),
+  allowNewItems: integer("allow_new_items").notNull().default(0),
+  allowPromotions: integer("allow_promotions").notNull().default(0),
+  weeklyCap: integer("weekly_cap").notNull().default(1),
+  quietStart: text("quiet_start").notNull().default("22:00"),
+  quietEnd: text("quiet_end").notNull().default("09:00"),
+  rejectedCategoriesJson: text("rejected_categories_json").notNull().default("[]"),
+  updatedAt: text("updated_at").notNull(),
+});

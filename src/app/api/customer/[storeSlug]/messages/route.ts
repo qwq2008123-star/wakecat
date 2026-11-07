@@ -29,13 +29,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ storeSlu
   return NextResponse.json({
     messages: rows.map((r) => {
       const meta = JSON.parse((r.meta_json as string) || "{}") as {
-        human?: boolean; channel?: string; imagePath?: string; inspirationId?: string; catName?: string;
+        human?: boolean; channel?: string; imagePath?: string; inspirationId?: string;
+        catName?: string; commercial?: boolean;
       };
       return {
         direction: r.direction as string,
         content: r.content as string,
         human: Boolean(meta.human),
         channel: meta.channel ?? (meta.human ? "human" : "ai"),
+        commercial: Boolean(meta.commercial),
         imagePath: meta.imagePath ?? null,
         inspirationId: meta.inspirationId ?? null,
         catName: meta.catName ?? null,
