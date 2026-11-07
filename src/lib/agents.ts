@@ -6,7 +6,7 @@ import {
   getLlmConfig, LlmConfig, runToolLoop, ToolSchema, ChatMessage,
 } from "./llm";
 import {
-  createGoalTask, updateTask, getTask, appendLog, queueAndSend, SessionUserLike,
+  createGoalTask, updateTask, getTask, appendLog, queueAndSend, SessionUserLike, grantCoupon,
 } from "./services";
 import { runOpportunityScan } from "./sales/opportunity-engine";
 
@@ -342,7 +342,7 @@ export async function runStrategist(ctx: Ctx) {
         await db.insert(strategies).values({
           id: rid("st"), taskId: ctx.taskId, memberId: String(a.memberId),
           kind: String(a.kind), content: String(a.content).slice(0, 500),
-          channel: "wecom-manual",
+          channel: "in-site",
           predictedCost: Number(a.predictedCost) || 0,
           predictedUplift: Number(a.predictedUplift) || 0,
           reason: String(a.reason ?? "").slice(0, 300), createdAt: nowIso(),
@@ -372,7 +372,7 @@ export async function runStrategist(ctx: Ctx) {
       for (const r of rows) {
         await db.insert(strategies).values({
           id: rid("st"), taskId: ctx.taskId, memberId: r.memberId,
-          kind: r.kind, content: r.content, channel: "wecom-manual",
+          kind: r.kind, content: r.content, channel: "in-site",
           predictedCost: r.cost, predictedUplift: Math.round(r.uplift),
           reason: r.reason, createdAt: nowIso(),
         });
@@ -400,7 +400,7 @@ export async function runStrategist(ctx: Ctx) {
     for (const r of rows) {
       await db.insert(strategies).values({
         id: rid("st"), taskId: ctx.taskId, memberId: r.memberId,
-        kind: r.kind, content: r.content, channel: "wecom-manual",
+        kind: r.kind, content: r.content, channel: "in-site",
         predictedCost: r.cost, predictedUplift: Math.round(r.uplift),
         reason: r.reason, createdAt: nowIso(),
       });
@@ -432,9 +432,21 @@ export async function runSeller(ctx: Ctx, user: SessionUserLike) {
       case "generate_and_send": {
         const body = String(a.body ?? "").slice(0, 300);
         if (body.length < 10) throw new Error("消息太短");
-        const r = await queueAndSend(user, ctx.taskId, String(a.strategyId));
+        const strategyId = String(a.strategyId);
+        const r = await queueAndSend(user, ctx.taskId, strategyId);
         sent.total++;
-        if (r.ok) sent.ok++; else sent.failed++;
+        if (r.ok) {
+          sent.ok++;
+          // 券承诺必须兑现:coupon 类策略发送成功即真实发券入账,不让消息开空头支票
+          const st = sqlite.prepare(
+            "SELECT kind, member_id, predicted_cost FROM strategies WHERE id = ?"
+          ).get(strategyId) as { kind: string; member_id: string; predicted_cost: number } | undefined;
+          if (st?.kind === "coupon" && (st.predicted_cost ?? 0) > 0) {
+            const name = `唤醒券·${ctx.taskId.slice(5, 13)}`;
+            await grantCoupon(user, ctx.taskId, st.member_id, name, st.predicted_cost);
+            ctx.emit({ type: "log", agent: "销售喵", step: "券已入账", message: `已真实发放 ${name} ¥${st.predicted_cost},客户报手机号即可核销` });
+          }
+        } else sent.failed++;
         return r;
       }
       default:

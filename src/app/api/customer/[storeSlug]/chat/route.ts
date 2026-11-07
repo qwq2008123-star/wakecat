@@ -59,7 +59,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ storeSl
     .run(bound.member_id as string, convId);
   const pending = loadPending(convId);
   const salesIntent = !!pending.action
-    || /(预约|有空|多少钱|价格|优惠|会员权益|推荐|新品|款式|预算|做「|周三|周四|周五|周六|周日|周一|周二)/.test(text)
+    || /(预约|有空|多少钱|价格|优惠|会员权益|推荐|新品|款式|预算|做「|周三|周四|周五|周六|周日|周一|周二|券|抵扣)/.test(text)
     // 不满/投诉必须进确定性引擎:暂停营销、转老板娘,不能让闺蜜人格嘻嘻哈哈接住
     || /(不满意|投诉|差评|态度|退款)/.test(text);
   let text2: string, cards: unknown[] = [], quickReplies: string[] = [], stage = "chat", engine: string = config.apiKey ? "llm" : "rules";

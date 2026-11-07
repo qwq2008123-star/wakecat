@@ -23,7 +23,7 @@ type Card =
   | { type: "slots"; items: { date: string; weekday: string; staff: string; time: string }[] }
   | { type: "appointment"; appointmentId: string; service: string; when: string; staff: string }
   | { type: "unsubscribed" } | { type: "transferred" };
-interface Msg { from: "user" | "emp"; text: string; cards?: Card[]; quick?: string[]; engine?: string; newMemories?: string[]; image?: string }
+interface Msg { from: "user" | "emp"; text: string; cards?: Card[]; quick?: string[]; engine?: string; newMemories?: string[]; image?: string; pollId?: string }
 interface MemoryRow {
   id: string; memory_type: string; category: string;
   attribute: string; value: string; user_confirmed: number; updated_at: string;
@@ -266,21 +266,24 @@ function BestieChatPanel({ storeSlug, visitorId, bound, catName, onEnergy, seed,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed, bound]);
 
-  // 轮询老板娘人工回复(15s 一次)
+  // 轮询店铺消息与老板娘人工回复(15s 一次)
   useEffect(() => {
     if (!visitorId) return;
     const timer = setInterval(async () => {
       try {
         const r = await fetch(`/api/customer/${storeSlug}/messages?visitorId=${visitorId}`);
         const j = await r.json();
-        const lastHuman = (j.messages ?? []).filter((m: { direction: string }) => m.direction === "out").pop();
-        if (lastHuman) {
-          setMsgs((prev) => {
-            const lastText = prev.filter((m) => m.from === "emp").pop()?.text;
-            if (lastText === lastHuman.content) return prev;
-            return [...prev, { from: "emp", text: `💬 芳姐(老板娘): ${lastHuman.content}` }];
-          });
-        }
+        const outs = (j.messages ?? []).filter((m: { direction: string }) => m.direction === "out");
+        const last = outs[outs.length - 1];
+        if (!last) return;
+        setMsgs((prev) => {
+          if (prev.some((m) => m.pollId === `${last.createdAt}`)) return prev;
+          const label = last.channel === "in-site"
+            ? "💌 店铺消息"
+            : last.human ? "💬 芳姐(老板娘)" : null;
+          if (!label) return prev;
+          return [...prev, { from: "emp", text: `${label}: ${last.content}`, pollId: `${last.createdAt}` }];
+        });
       } catch { /* 静默轮询 */ }
     }, 15000);
     return () => clearInterval(timer);

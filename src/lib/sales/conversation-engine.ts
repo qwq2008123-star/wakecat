@@ -337,7 +337,7 @@ export function handleCustomerMessage(opts: {
   }
 
   // ⑥ 意图:优惠/权益(查真实授权,不编造)
-  if (/(优惠|折扣|便宜|权益|会员卡)/.test(text)) {
+  if (/(优惠|折扣|便宜|权益|会员卡|券|抵扣)/.test(text)) {
     let body = "店里目前没有进行中的公开折扣活动,我不会为了成交乱承诺。";
     if (member) {
       const unused = sqlite.prepare(

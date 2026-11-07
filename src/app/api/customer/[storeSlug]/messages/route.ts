@@ -24,11 +24,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ storeSlu
     ORDER BY created_at ASC, rowid ASC
   `).all(`h5:${visitorId}`, store.id, visitorId) as Array<Record<string, unknown>>;
   return NextResponse.json({
-    messages: rows.map((r) => ({
-      direction: r.direction as string,
-      content: r.content as string,
-      human: Boolean((JSON.parse((r.meta_json as string) || "{}") as { human?: boolean }).human),
-      createdAt: r.created_at as string,
-    })),
+    messages: rows.map((r) => {
+      const meta = JSON.parse((r.meta_json as string) || "{}") as { human?: boolean; channel?: string };
+      return {
+        direction: r.direction as string,
+        content: r.content as string,
+        human: Boolean(meta.human),
+        channel: meta.channel ?? (meta.human ? "human" : "ai"),
+        createdAt: r.created_at as string,
+      };
+    }),
   });
 }

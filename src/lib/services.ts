@@ -4,6 +4,7 @@ import {
   consumptionRecords, financeEntries, appointments, couponGrants,
   memberCats, agentConfigs, auditLog, messageEvents as messageEventsTable,
   orders as ordersTable, orderItems as orderItemsTable, storeServices,
+  conversations, conversationMessages,
 } from "./db/schema";
 import { eq, and } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
@@ -16,6 +17,33 @@ const now = () => new Date().toISOString();
 const rid = (p: string) => `${p}_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const memNameSafe = (memberId: string) =>
   (sqlite.prepare("SELECT name FROM members WHERE id = ?").get(memberId) as { name: string } | undefined)?.name ?? "会员";
+
+/** 站内送达:把消息写进会员绑定的 H5 会话(C 端轮询可见、可直接回复) */
+export function deliverInSite(storeId: string, memberId: string, body: string, meta: Record<string, unknown> = {}):
+  { ok: true; conversationId: string } | { ok: false; reason: string } {
+  const ident = sqlite.prepare(`
+    SELECT external_user_id FROM customer_identities
+    WHERE store_id = ? AND member_id = ? AND channel = 'h5'
+    ORDER BY created_at DESC LIMIT 1
+  `).get(storeId, memberId) as { external_user_id: string } | undefined;
+  if (!ident) return { ok: false, reason: "会员尚未绑定 H5,没有站内收件箱可送达" };
+  const identityId = `h5:${ident.external_user_id}`;
+  let conv = sqlite.prepare(
+    "SELECT id FROM conversations WHERE identity_id = ? ORDER BY created_at DESC LIMIT 1"
+  ).get(identityId) as { id: string } | undefined;
+  if (!conv) {
+    const id = rid("conv");
+    db.insert(conversations).values({
+      id, storeId, identityId, channel: "h5", memberId, status: "open", createdAt: now(),
+    }).run();
+    conv = { id };
+  }
+  db.insert(conversationMessages).values({
+    id: rid("cm"), conversationId: conv.id, direction: "out",
+    content: body, metaJson: JSON.stringify({ channel: "in-site", ...meta }), createdAt: now(),
+  }).run();
+  return { ok: true, conversationId: conv.id };
+}
 
 /** Agent / API 层通用的最小用户上下文 */
 export type SessionUserLike = { storeId: string; name: string; role: string };
@@ -165,6 +193,36 @@ export async function queueAndSend(user: SessionUserLike, taskId: string, strate
     message: "闸门通过(授权/频次/预算),消息进入发送队列",
   });
 
+  // 站内直发通道:AI 起草 → 直接写进会员在本站的会话,客户打开 H5 即可看到并回复
+  if (st.channel === 'in-site') {
+    const d = deliverInSite(user.storeId, st.memberId, st.content, { taskId, strategyId, kind: st.kind });
+    if (d.ok) {
+      await db.update(outreachMessages).set({
+        status: "sent", externalId: `in-site:${d.conversationId}`, sentAt: now(),
+      }).where(eq(outreachMessages.id, msgId));
+      await db.insert(messageEventsTable).values({
+        id: rid("me"), messageId: msgId, eventType: "sent",
+        metaJson: JSON.stringify({ channel: "in-site", conversationId: d.conversationId }), occurredAt: now(),
+      });
+      await db.insert(financeEntries).values({
+        id: rid("fe"), storeId: user.storeId, taskId, strategyId,
+        type: "cost", amount: 0, note: "站内直发,无渠道成本", occurredAt: now(),
+      });
+      await appendLog({
+        taskId, agent: "销售喵", step: "站内直发成功", toolName: "send_in_site",
+        message: `消息已直接送达 ${memNameSafe(st.memberId)} 的站内收件箱(会话 ${d.conversationId})`,
+      });
+      return { msgId, ok: true, channel: "in-site" };
+    }
+    // 会员没绑 H5:诚实转人工通道,不假装送达
+    await db.update(outreachMessages).set({ status: 'awaiting_send', failureReason: d.reason }).where(eq(outreachMessages.id, msgId));
+    await appendLog({
+      taskId, agent: "销售喵", step: "站内不可达,转人工", status: "error",
+      message: `${memNameSafe(st.memberId)} ${d.reason},消息已转人工通道(行动清单复制发送)`,
+    });
+    return { msgId, ok: false as const, failureReason: "awaiting_manual_send", manual: true, body: st.content, memberName: memNameSafe(st.memberId) };
+  }
+
   // 半自动企微通道:AI 起草 → 商家在行动清单里复制到企微真实发送 → 回来点「已发送」
   if (st.channel === 'wecom-manual') {
     await db.update(outreachMessages).set({ status: 'awaiting_send' }).where(eq(outreachMessages.id, msgId));
@@ -217,6 +275,32 @@ export async function queueAndSend(user: SessionUserLike, taskId: string, strate
 }
 
 /** 模拟会员回复(演示用;规则解析意图,不假装是真实意图识别) */
+/** 已排队(awaiting_send)的消息改走站内直发;供行动清单按钮调用 */
+export async function sendInSiteNow(user: SessionUser, messageId: string): Promise<{ ok: boolean; error?: string }> {
+  const m = sqlite.prepare(`
+    SELECT o.*, t.store_id FROM outreach_messages o
+    JOIN tasks t ON t.id = o.task_id WHERE o.id = ?
+  `).get(messageId) as Record<string, unknown> | undefined;
+  if (!m || m.store_id !== user.storeId) return { ok: false, error: "消息不存在" };
+  if (m.status !== "awaiting_send") return { ok: false, error: `消息状态为 ${m.status},不是待发送` };
+  const d = deliverInSite(user.storeId, m.member_id as string, m.body as string, {
+    taskId: m.task_id, messageId, manualUpgrade: true,
+  });
+  if (!d.ok) return { ok: false, error: d.reason };
+  sqlite.prepare("UPDATE outreach_messages SET status='sent', sent_at=?, external_id=?, channel='in-site' WHERE id=?")
+    .run(now(), `in-site:${d.conversationId}`, messageId);
+  sqlite.prepare("INSERT INTO message_events (id, message_id, event_type, meta_json, occurred_at) VALUES (?,?,?,?,?)")
+    .run(rid("me"), messageId, "sent",
+      JSON.stringify({ channel: "in-site", conversationId: d.conversationId, by: user.name }), now());
+  sqlite.prepare("INSERT INTO finance_entries (id, store_id, task_id, type, amount, note, occurred_at) VALUES (?,?,?,?,?,?,?)")
+    .run(rid("fe"), user.storeId, m.task_id, "cost", 0, "站内直发,无渠道成本", now());
+  await appendLog({
+    taskId: m.task_id as string, agent: "喵老板", step: "站内直发",
+    message: `${user.name} 将消息直接送达 ${memNameSafe(m.member_id as string)} 的站内收件箱`,
+  });
+  return { ok: true };
+}
+
 export async function simulateReply(user: SessionUser, messageId: string, intent: "accept" | "price" | "decline", replyText?: string) {
   const o = (await db.select().from(outreachMessages).where(eq(outreachMessages.id, messageId)).limit(1))[0];
   if (!o) throw new HttpError(404, "消息不存在");
@@ -319,7 +403,7 @@ export async function recordVisit(user: SessionUser, memberId: string, opts: { s
 }
 
 /** 发放优惠券(仅已批准任务内) */
-export async function grantCoupon(user: SessionUser, taskId: string, memberId: string, name: string, value: number) {
+export async function grantCoupon(user: SessionUserLike, taskId: string, memberId: string, name: string, value: number) {
   const t = await getTask(taskId);
   if (!t || t.storeId !== user.storeId) throw new HttpError(404, "任务不存在");
   if (t.status !== "approved" && t.status !== "running") {

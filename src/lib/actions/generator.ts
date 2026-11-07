@@ -118,22 +118,29 @@ export function generateDailyActions(storeId: string): ActionItem[] {
 
   /* ④b 半自动企微:AI 已起草,等商家真实发送 */
   const manual = sqlite.prepare(`
-    SELECT o.id, o.body, o.member_id, m.name AS member_name
+    SELECT o.id, o.body, o.member_id, m.name AS member_name,
+      EXISTS(
+        SELECT 1 FROM customer_identities ci
+        WHERE ci.store_id = t.store_id AND ci.member_id = o.member_id AND ci.channel = 'h5'
+      ) AS member_bound
     FROM outreach_messages o JOIN members m ON m.id = o.member_id
     JOIN tasks t ON t.id = o.task_id
     WHERE t.store_id = ? AND o.status = 'awaiting_send'
     ORDER BY o.created_at DESC LIMIT 8
   `).all(storeId) as Row[];
   for (const o of manual) {
+    const bound = !!o.member_bound;
     items.push({
       dedupeKey: `manual_send:${o.id}`,
       type: "manual_send",
       title: `把这条消息发给 ${o.member_name}`,
-      reason: "AI 已按她的偏好起草,复制到企微粘贴发送即可",
+      reason: bound
+        ? "AI 已按她的偏好起草;她绑定过本店 H5,可站内直发(打开网站就能看到并可回复)"
+        : "AI 已按她的偏好起草,复制到企微粘贴发送即可",
       memberId: o.member_id as string,
       memberName: o.member_name as string,
-      payload: { messageId: o.id, body: o.body },
-      suggestedAction: "复制文案 → 企微粘贴发送",
+      payload: { messageId: o.id, body: o.body, memberBound: bound },
+      suggestedAction: bound ? "站内直接发送,或复制去企微" : "复制文案 → 企微粘贴发送",
     });
   }
 

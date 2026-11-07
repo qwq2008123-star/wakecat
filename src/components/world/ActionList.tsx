@@ -60,6 +60,13 @@ export default function ActionList({ refreshKey }: { refreshKey: number }) {
     setDone((d) => [...d, dedupeKey]);
     load();
   }
+  async function sendInSite(messageId: string, dedupeKey: string) {
+    const r = await fetch(`/api/outreach/${messageId}/send-in-site`, { method: "POST" })
+      .then((x) => x.json()).catch(() => ({ ok: false }));
+    if (!r.ok) { alert(r.error ?? "站内发送失败"); return; }
+    setDone((d) => [...d, dedupeKey]);
+    load();
+  }
   async function skip(dedupeKey: string, type: string, title: string) {
     await fetch(`/api/actions/${encodeURIComponent(dedupeKey)}`, {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -123,7 +130,7 @@ export default function ActionList({ refreshKey }: { refreshKey: number }) {
                             </div>
                           ) : null}
                           <div className="text-[11.5px] mt-1.5" style={{ color: "var(--brand-2)" }}>→ {item.suggestedAction}</div>
-                          <ItemActions item={item} onDecide={decide} onMarkSent={markSent} onSkip={skip} onCopy={(t) => { setCopied(item.dedupeKey); navigator.clipboard?.writeText(t); }} copied={copied === item.dedupeKey} />
+                          <ItemActions item={item} onDecide={decide} onMarkSent={markSent} onSendInSite={sendInSite} onSkip={skip} onCopy={(t) => { setCopied(item.dedupeKey); navigator.clipboard?.writeText(t); }} copied={copied === item.dedupeKey} />
                         </div>
                       )}
                     </motion.div>
@@ -138,10 +145,11 @@ export default function ActionList({ refreshKey }: { refreshKey: number }) {
   );
 }
 
-function ItemActions({ item, onDecide, onMarkSent, onSkip, onCopy, copied }: {
+function ItemActions({ item, onDecide, onMarkSent, onSendInSite, onSkip, onCopy, copied }: {
   item: ActionItem;
   onDecide: (taskId: string, approve: boolean, dedupeKey: string, title: string) => void;
   onMarkSent: (messageId: string, dedupeKey: string) => void;
+  onSendInSite: (messageId: string, dedupeKey: string) => void;
   onSkip: (dedupeKey: string, type: string, title: string) => void;
   onCopy: (text: string) => void;
   copied: boolean;
@@ -157,12 +165,20 @@ function ItemActions({ item, onDecide, onMarkSent, onSkip, onCopy, copied }: {
       )}
       {item.type === "manual_send" && (
         <>
+          {item.payload.memberBound ? (
+            <button className="btn btn-orange btn-sm"
+              onClick={() => onSendInSite(item.payload.messageId as string, item.dedupeKey)}>
+              <Send size={13} /> 站内直接发送
+            </button>
+          ) : null}
           <button className="btn btn-sm" onClick={() => onCopy(item.payload.body as string)}>
             {copied ? "✓ 已复制,去企微粘贴" : "复制文案"}
           </button>
-          <button className="btn btn-green btn-sm" onClick={() => onMarkSent(item.payload.messageId as string, item.dedupeKey)}>
-            我已在企微发送
-          </button>
+          {!item.payload.memberBound && (
+            <button className="btn btn-green btn-sm" onClick={() => onMarkSent(item.payload.messageId as string, item.dedupeKey)}>
+              我已在企微发送
+            </button>
+          )}
           <button className="btn btn-red btn-sm" onClick={() => onSkip(item.dedupeKey, item.type, item.title)}>放弃</button>
         </>
       )}
