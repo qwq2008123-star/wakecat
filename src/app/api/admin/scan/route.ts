@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { ensureBootstrap } from "@/lib/bootstrap";
 import { requireUser } from "@/lib/session";
 import { decayAllCats } from "@/lib/cats/engine";
-import { runCatMissCheck } from "@/lib/cats/miss";
+import { runCatMissCheck, runCatFollowUps } from "@/lib/cats/miss";
 import { runOpportunityScan } from "@/lib/sales/opportunity-engine";
 
 /**
@@ -22,6 +22,7 @@ export async function POST(req: Request) {
   const decayed = decayAllCats(storeId);
   const scan = runOpportunityScan(storeId);
   const miss = await runCatMissCheck(storeId);
+  const follow = await runCatFollowUps(storeId);
   return NextResponse.json({
     ok: true,
     catsDecayed: decayed,
@@ -29,5 +30,6 @@ export async function POST(req: Request) {
     blockedByConsent: scan.blocked,
     opportunities: scan.opportunities.length,
     catMissSent: miss.sent,
+    followSent: follow.sent,
   });
 }

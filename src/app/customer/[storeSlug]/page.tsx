@@ -306,6 +306,8 @@ function BestieChatPanel({ storeSlug, visitorId, bound, catName, onEnergy, seed,
           } else {
             const label = m.channel === "cat-miss"
               ? `🐱 ${m.catName ?? catName ?? "猫咪"}想你啦`
+              : m.channel === "cat-care"
+              ? `🐱 ${m.catName ?? catName ?? "猫咪"}想跟你聊聊`
               : m.channel === "in-site" ? "💌 店铺消息"
               : m.human ? "💬 芳姐(老板娘)" : null;
             hist.push({
@@ -344,6 +346,8 @@ function BestieChatPanel({ storeSlug, visitorId, bound, catName, onEnergy, seed,
           if (prev.some((m) => m.pollId === `${last.createdAt}`)) return prev;
           const label = last.channel === "cat-miss"
             ? `🐱 ${catName ?? "猫咪"}想你啦`
+            : last.channel === "cat-care"
+            ? `🐱 ${catName ?? "猫咪"}想跟你聊聊`
             : last.channel === "in-site"
             ? (last.commercial ? "🛍 店铺推荐" : "💌 店铺消息")
             : last.human ? "💬 芳姐(老板娘)" : null;
