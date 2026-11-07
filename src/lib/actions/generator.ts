@@ -14,7 +14,8 @@ export type ActionType =
   | "no_reply_followup"   // 触达7天未回复,人工跟进
   | "stuck_conversation"  // 客户会话转人工
   | "budget_blocked"      // 预算拦截,需商家决策
-  | "manual_send";        // 半自动企微:AI起草待商家真实发送
+  | "manual_send"        // 半自动企微:AI起草待商家真实发送
+  | "queued_online";     // 站内直发排队中:客户上线瞬间自动送达
 
 export interface ActionItem {
   dedupeKey: string;
@@ -141,6 +142,27 @@ export function generateDailyActions(storeId: string): ActionItem[] {
       memberName: o.member_name as string,
       payload: { messageId: o.id, body: o.body, memberBound: bound },
       suggestedAction: bound ? "站内直接发送,或复制去企微" : "复制文案 → 企微粘贴发送",
+    });
+  }
+
+  /* ⑤a 站内直发排队:客户未上线,消息等待自动送达(信息展示) */
+  const queued = sqlite.prepare(`
+    SELECT o.id, o.body, o.created_at, m.name AS member_name
+    FROM outreach_messages o JOIN members m ON m.id = o.member_id
+    JOIN tasks t ON t.id = o.task_id
+    WHERE t.store_id = ? AND o.status = 'queued' AND o.channel = 'in-site'
+    ORDER BY o.created_at DESC LIMIT 8
+  `).all(storeId) as Row[];
+  for (const o of queued) {
+    items.push({
+      dedupeKey: `queued_online:${o.id}`,
+      type: "queued_online",
+      title: `「${o.member_name}」上线后自动收到`,
+      reason: "消息已就绪,客户打开网站的那一刻自动送达她的收件箱",
+      memberId: o.member_id as string,
+      memberName: o.member_name as string,
+      payload: { body: o.body },
+      suggestedAction: "无需操作——等待客户上线",
     });
   }
 

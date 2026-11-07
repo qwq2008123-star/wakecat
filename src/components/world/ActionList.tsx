@@ -5,12 +5,12 @@ import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import {
-  CircleCheck, CircleX, Check, ClipboardList, CalendarClock,
+  CircleCheck, CircleX, Check, ClipboardList, CalendarClock, Clock,
   MessageSquareText, Ban, Send, ChevronRight,
 } from "lucide-react";
 import { SectionTitle } from "./ui";
 
-type ActionType = "approval" | "appointment_today" | "no_reply_followup"
+type ActionType = "approval" | "appointment_today" | "no_reply_followup" | "queued_online"
   | "stuck_conversation" | "budget_blocked" | "manual_send";
 
 interface ActionItem {
@@ -26,12 +26,14 @@ const TYPE_META: Record<ActionType, { label: string; icon: React.ReactNode; acce
   no_reply_followup: { label: "人工跟进", icon: <MessageSquareText size={13} />, accent: "var(--blue)" },
   budget_blocked: { label: "预算决策", icon: <Ban size={13} />, accent: "var(--red)" },
   manual_send: { label: "待真实发送", icon: <Send size={13} />, accent: "var(--orange)" },
+  queued_online: { label: "排队待送达", icon: <Clock size={13} />, accent: "var(--brand-2)" },
 };
 
-const GROUP_ORDER: ActionType[] = ["approval", "manual_send", "stuck_conversation", "appointment_today", "no_reply_followup", "budget_blocked"];
+const GROUP_ORDER: ActionType[] = ["approval", "manual_send", "queued_online", "stuck_conversation", "appointment_today", "no_reply_followup", "budget_blocked"];
 const GROUP_LABEL: Record<ActionType, string> = {
   approval: "需要你审批", manual_send: "等你真实发送", stuck_conversation: "等你亲自回复",
   appointment_today: "今天到店准备", no_reply_followup: "建议人工跟进", budget_blocked: "需要你决策",
+  queued_online: "等待客户上线",
 };
 
 export default function ActionList({ refreshKey }: { refreshKey: number }) {
@@ -163,6 +165,9 @@ function ItemActions({ item, onDecide, onMarkSent, onSendInSite, onSkip, onCopy,
           <Link className="btn btn-ghost btn-sm" href={`/tasks/${item.payload.taskId}`}>详情 <ChevronRight size={12} /></Link>
         </>
       )}
+      {item.type === "queued_online" && (
+        <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>无需任何操作,到点自动送达</span>
+      )}
       {item.type === "manual_send" && (
         <>
           {item.payload.memberBound ? (
@@ -191,7 +196,7 @@ function ItemActions({ item, onDecide, onMarkSent, onSendInSite, onSkip, onCopy,
           <button className="btn btn-ghost btn-sm" onClick={() => onSkip(item.dedupeKey, item.type, item.title)}>放弃</button>
         </>
       )}
-      {item.type !== "approval" && item.type !== "manual_send" && item.type !== "stuck_conversation" && item.type !== "budget_blocked" && (
+      {item.type !== "approval" && item.type !== "manual_send" && item.type !== "stuck_conversation" && item.type !== "budget_blocked" && item.type !== "queued_online" && (
         <>
           <button className="btn btn-green btn-sm" onClick={() => onSkip(item.dedupeKey, item.type, item.title)}>标记完成</button>
           <button className="btn btn-ghost btn-sm" onClick={() => onSkip(item.dedupeKey, item.type, item.title)}>跳过</button>
