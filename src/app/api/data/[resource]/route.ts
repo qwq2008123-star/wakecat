@@ -23,6 +23,20 @@ export async function GET(req: Request, { params }: { params: Promise<{ resource
         return NextResponse.json(await getRealTaskViews(user.storeId));
       case "finance": {
         const r = await getReports(user.storeId);
+        // 三种口径:预测(策略预估)/ 实际(真实订单,剔除退款)/ 增量(AI唤回归因的订单)
+        const sqlite3 = (await import("@/lib/db/client")).sqlite;
+        const predicted = sqlite3.prepare(`
+          SELECT COALESCE(SUM(s.predicted_uplift),0) AS v FROM strategies s
+          JOIN tasks t ON t.id = s.task_id WHERE t.store_id = ?
+        `).get(user.storeId) as { v: number };
+        const actualRow = sqlite3.prepare(`
+          SELECT COALESCE(SUM(total_amount),0) AS v FROM orders
+          WHERE store_id = ? AND status != 'refunded'
+        `).get(user.storeId) as { v: number };
+        const aiRow = sqlite3.prepare(`
+          SELECT COALESCE(SUM(total_amount),0) AS v FROM orders
+          WHERE store_id = ? AND status != 'refunded' AND attribution = 'ai_recall'
+        `).get(user.storeId) as { v: number };
         // 月度趋势:近 6 个月真实成本/回流(预测线由前端隐藏)
         const trendRows = (await import("@/lib/db/client")).sqlite.prepare(`
           SELECT strftime('%m', occurred_at) AS mon,
@@ -35,6 +49,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ resource
           cost: r.cost, reached: r.funnel.sent, replied: r.funnel.replied ?? 0,
           appointments: r.funnel.accepted ?? 0, visited: r.visited,
           consumption: Math.round(r.revenue), profit: Math.round(r.revenue - r.cost),
+          predictedRevenue: Math.round(predicted.v),
+          actualRevenue: Math.round(actualRow.v),
+          incrementalRevenue: Math.round(aiRow.v),
           trend: trendRows.map((t) => ({
             month: `${t.mon}月`, cost: t.cost, revenue: t.revenue, predicted: null,
           })),

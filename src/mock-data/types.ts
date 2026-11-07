@@ -109,6 +109,9 @@ export interface FinanceSummary {
   visited: number;
   consumption: number;
   profit: number;
+  predictedRevenue?: number;
+  actualRevenue?: number;
+  incrementalRevenue?: number;
   trend: FinancePoint[];
 }
 

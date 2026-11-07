@@ -36,7 +36,7 @@ export const ENERGY_RULES: Record<string, { delta: number; label: string }> = {
 };
 const DAILY_GAIN_CAP = 30;
 const BOND_RULES: Record<string, number> = {
-  daily_first_chat: 1, share_style: 2, memory_correction: 2,
+  daily_first_chat: 1, effective_chat: 1, share_style: 2, memory_correction: 2,
   favorite_inspiration: 1, appointment_done: 2,
 };
 
@@ -140,19 +140,47 @@ export function reverseEnergy(dedupeKey: string, reason: string) {
   return { ok: true };
 }
 
-/** 亲密度:来自互动/分享/纠正,不来自消费 */
-export function awardBond(catId: string, userId: string, action: string, reason: string) {
-  const delta = BOND_RULES[action] ?? 0;
-  if (delta <= 0) return;
+/** 亲密度:来自互动/分享/纠正,不来自消费。
+ *  防刷三件套:每类事件独立 dedupeKey + 聊天类每日上限 + 全部变化写 cat_bond_logs。 */
+export const BOND_DAILY_CHAT_CAP = 3; // daily_first_chat + effective_chat 合计每日上限
+
+export function awardBond(opts: {
+  catId: string; userId: string; action: keyof typeof BOND_RULES | string;
+  reason: string; dedupeKey?: string;
+}): { ok: boolean; delta: number; reason?: string } {
+  const delta = BOND_RULES[opts.action] ?? 0;
+  if (delta <= 0) return { ok: false, delta: 0, reason: "未知亲密度行为" };
+  // 事件级 dedupe:同事件永不重复计分
+  const dedupeKey = opts.dedupeKey ?? `${opts.action}:${opts.catId}:${today()}`;
+  const dup = sqlite.prepare(
+    "SELECT id FROM cat_bond_logs WHERE dedupe_key = ?"
+  ).get(dedupeKey) as { id: string } | undefined;
+  if (dup) return { ok: false, delta: 0, reason: "重复事件,防刷拦截" };
+  // 聊天类每日上限(daily_first_chat + effective_chat 合并计算)
+  if (opts.action === "daily_first_chat" || opts.action === "effective_chat") {
+    const chatToday = sqlite.prepare(`
+      SELECT COALESCE(SUM(delta),0) AS s FROM cat_bond_logs
+      WHERE cat_id = ? AND action IN ('daily_first_chat','effective_chat')
+        AND created_at >= ?
+    `).get(opts.catId, today() + "T00:00:00") as { s: number };
+    if (chatToday.s >= BOND_DAILY_CHAT_CAP) {
+      return { ok: false, delta: 0, reason: `今日聊天亲密度已达上限(${BOND_DAILY_CHAT_CAP})` };
+    }
+  }
+  const c = sqlite.prepare("SELECT * FROM cats WHERE id = ?").get(opts.catId) as CatRow | undefined;
+  if (!c) return { ok: false, delta: 0, reason: "猫咪不存在" };
+  const applied = Math.min(delta, Math.max(0, 100 - c.bond));
+  if (applied <= 0) return { ok: false, delta: 0, reason: "亲密度已满" };
   db.insert(catBondLogs).values({
-    id: rid("cb"), catId, userId, delta, reason, createdAt: nowIso(),
+    id: rid("cb"), catId: opts.catId, userId: opts.userId,
+    delta: applied, reason: opts.reason,
+    action: opts.action, dedupeKey, createdAt: nowIso(),
   }).run();
-  const c = sqlite.prepare("SELECT * FROM cats WHERE id = ?").get(catId) as CatRow | undefined;
-  if (!c) return;
   db.update(cats).set({
-    bond: Math.min(100, c.bond + delta), updatedAt: nowIso(),
-  }).where(eq(cats.id, catId)).run();
-  syncCat(catId);
+    bond: Math.min(100, c.bond + applied), updatedAt: nowIso(),
+  }).where(eq(cats.id, opts.catId)).run();
+  syncCat(opts.catId);
+  return { ok: true, delta: applied };
 }
 
 /** 每日衰减(调度器调用):普通 -1;进入休息状态 -2;能量不会因衰减低于 0 */

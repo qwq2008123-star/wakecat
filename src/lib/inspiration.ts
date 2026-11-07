@@ -3,8 +3,8 @@ import { getLlmConfig, LlmConfig } from "./llm";
 import { getCatalog, CatalogService } from "./sales/recommendation-engine";
 import { saveExtractedMemories, ExtractedMemory } from "./memory/extractor";
 import { awardEnergy, awardBond } from "./cats/engine";
-import { writeFile, mkdir } from "node:fs/promises";
-import path from "node:path";
+import { createHash } from "node:crypto";
+import { imageStorage } from "./storage";
 
 /* ============================================================
    阶段④ 灵感收藏室:发图 → GLM-4V 看图 → 风格标签 → 归主题
@@ -14,7 +14,6 @@ import path from "node:path";
    ============================================================ */
 
 const VISION_MODEL = "glm-4v-flash"; // 智谱免费视觉模型,OpenAI 兼容格式
-const UPLOAD_DIR = path.join(process.cwd(), "data", "uploads");
 
 export interface InspirationAnalysis {
   title: string;
@@ -120,17 +119,16 @@ function assignTheme(storeId: string, userId: string, name: string): string {
   return id;
 }
 
-/* ---------- 保存图片文件,返回可访问的 API 路径 ---------- */
-async function saveImageFile(dataUrl: string): Promise<string | null> {
+/* ---------- 保存图片文件:返回可访问路径 + 内容 SHA-256(能量防重复领取依据) ---------- */
+async function saveImageFile(dataUrl: string): Promise<{ path: string; hash: string } | null> {
   const m = /^data:image\/(png|jpeg|jpg|webp);base64,(.+)$/.exec(dataUrl);
   if (!m) return null;
   const ext = m[1] === "png" ? "png" : m[1] === "webp" ? "webp" : "jpg";
   const buf = Buffer.from(m[2], "base64");
   if (buf.length > 5 * 1024 * 1024) return null; // 5MB 上限
-  const id = rid("img");
-  await mkdir(UPLOAD_DIR, { recursive: true });
-  await writeFile(path.join(UPLOAD_DIR, `${id}.${ext}`), buf);
-  return `/api/img/${id}.${ext}`;
+  const hash = createHash("sha256").update(buf).digest("hex");
+  const storedPath = await imageStorage.put(buf, ext); // 本地或对象存储,业务无感
+  return { path: storedPath, hash };
 }
 
 /* ---------- 主入口:收藏 + 分析 ---------- */
@@ -145,11 +143,12 @@ export async function collectInspiration(opts: {
   const note = (opts.note ?? "").slice(0, 120);
   const config = await getLlmConfig(storeId);
 
-  // 1. 存图
-  let imagePath: string | null = null, imageError: string | undefined;
+  // 1. 存图(内容 SHA-256:同一张图无论传几次,能量只领一次)
+  let imagePath: string | null = null, imageError: string | undefined, contentHash: string | null = null;
   if (opts.imageDataUrl) {
-    imagePath = await saveImageFile(opts.imageDataUrl);
-    if (!imagePath) imageError = "图片格式不支持或超过 5MB";
+    const saved = await saveImageFile(opts.imageDataUrl);
+    if (saved) { imagePath = saved.path; contentHash = saved.hash; }
+    else imageError = "图片格式不支持或超过 5MB";
   }
 
   // 2. 看图(GLM-4V)→ 诚实降级
@@ -176,9 +175,9 @@ export async function collectInspiration(opts: {
   const themeId = analysis.tags.length || analysis.theme !== "未分类" ? assignTheme(storeId, userId, analysis.theme) : null;
   const id = rid("ii");
   sqlite.prepare(`
-    INSERT INTO inspiration_items (id, store_id, user_id, theme_id, title, note, image_path, style_tags_json, cat_note, source, created_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?)
-  `).run(id, storeId, userId, themeId, analysis.title, note || null, imagePath,
+    INSERT INTO inspiration_items (id, store_id, user_id, theme_id, title, note, image_path, image_hash, style_tags_json, cat_note, source, created_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+  `).run(id, storeId, userId, themeId, analysis.title, note || null, imagePath, contentHash,
     JSON.stringify(analysis.tags), analysis.catComment, opts.source ?? "upload", nowIso());
 
   // 4. 闺蜜猫的记忆:风格偏好写进去(未确认的 AI 推测,用户可在成长中心纠正)
@@ -195,16 +194,19 @@ export async function collectInspiration(opts: {
     if (r.saved + r.updated > 0) newMemories.push(`近期喜欢的风格: ${analysis.tags.join("、")}`);
   }
 
-  // 5. 能量(分享款式 +3,防刷)+ 亲密度
+  // 5. 能量(分享款式 +3,内容 SHA-256 防重复领取)+ 亲密度(同图同用户只加一次)
   let energyDelta = 0;
   if (catId && (imagePath || note)) {
-    const hash = Buffer.from(`${imagePath ?? ""}|${note}`).toString("base64").slice(0, 20);
+    const contentKey = contentHash ?? createHash("sha256").update(`note:${note}`).digest("hex");
     const e = awardEnergy({
       catId, userId, action: "share_style",
       relatedType: "inspiration", relatedId: id,
-      dedupeKey: `share_style:${catId}:${hash}`,
+      dedupeKey: `share_style:${catId}:${contentKey}`,
     });
-    if (e.ok) { energyDelta = e.delta; awardBond(catId, userId, "share_style", "分享灵感"); }
+    if (e.ok) {
+      energyDelta = e.delta;
+      awardBond({ catId, userId, action: "share_style", reason: "分享灵感", dedupeKey: `share_style:${catId}:${contentKey}` });
+    }
   }
 
   return { item: toItem(rowById(id)), analysis, newMemories, energyDelta, imageError };

@@ -12,6 +12,7 @@ import { HttpError, SessionUser } from "./session";
 import { getLlmConfig, LlmConfig } from "./llm";
 import { sendMessage } from "./channels";
 import { catStateOf } from "./queries";
+import { awardEnergy } from "./cats/engine";
 
 const now = () => new Date().toISOString();
 const rid = (p: string) => `${p}_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -28,9 +29,15 @@ export function deliverInSite(storeId: string, memberId: string, body: string, m
   `).get(storeId, memberId) as { external_user_id: string } | undefined;
   if (!ident) return { ok: false, reason: "会员尚未绑定 H5,没有站内收件箱可送达" };
   const identityId = `h5:${ident.external_user_id}`;
+  // 跨店隔离:会话必须同时匹配 store_id 与 identity_id,身份必须归属本店+本会员
+  const identOwned = sqlite.prepare(`
+    SELECT 1 FROM customer_identities
+    WHERE store_id = ? AND member_id = ? AND channel = 'h5' AND external_user_id = ?
+  `).get(storeId, memberId, ident.external_user_id);
+  if (!identOwned) return { ok: false, reason: "身份归属校验失败:会员与店铺不匹配" };
   let conv = sqlite.prepare(
-    "SELECT id FROM conversations WHERE identity_id = ? ORDER BY created_at DESC LIMIT 1"
-  ).get(identityId) as { id: string } | undefined;
+    "SELECT id FROM conversations WHERE identity_id = ? AND store_id = ? ORDER BY created_at DESC LIMIT 1"
+  ).get(identityId, storeId) as { id: string } | undefined;
   if (!conv) {
     const id = rid("conv");
     db.insert(conversations).values({
@@ -282,6 +289,12 @@ export async function deliverQueuedInSite(storeId: string, memberId: string): Pr
   `).all(memberId) as Array<Record<string, unknown>>;
   let n = 0;
   for (const r of rows) {
+    // 幂等 claim:先把状态从 queued 抢占为 sending,抢不到说明另一处正在送
+    const claim = sqlite.prepare(`
+      UPDATE outreach_messages SET status = 'sending', failure_reason = 'delivering'
+      WHERE id = ? AND status = 'queued'
+    `).run(r.id as string);
+    if (claim.changes === 0) continue;
     const d = deliverInSite(storeId, memberId, r.body as string, { taskId: r.task_id, messageId: r.id, queuedDelivery: true });
     if (d.ok) {
       sqlite.prepare("UPDATE outreach_messages SET status='sent', sent_at=?, external_id=? WHERE id=?")
@@ -294,6 +307,10 @@ export async function deliverQueuedInSite(storeId: string, memberId: string): Pr
         message: `${memNameSafe(memberId)} 上线了,排队消息已送达 TA 的站内收件箱`,
       });
       n++;
+    } else {
+      // 送达失败(无会话等)→ 退回排队,下次上线再试
+      sqlite.prepare("UPDATE outreach_messages SET status='queued', failure_reason=? WHERE id=?")
+        .run(d.ok ? "" : d.reason, r.id as string);
     }
   }
   return n;
@@ -384,10 +401,14 @@ export async function recordVisit(user: SessionUser, memberId: string, opts: { s
         id: rid("fe"), storeId: user.storeId, taskId, strategyId,
         type: "revenue", amount: opts.amount, note: `唤回到店消费:${opts.service}`, occurredAt: now(),
       });
-      await db.update(appointments).set({ status: "visited" })
-        .where(and(eq(appointments.taskId, taskId), eq(appointments.memberId, memberId)));
     }
   }
+  // 预约以 appointments 表为准:该会员最近一条确认预约标记到店(无论有无任务)
+  await db.update(appointments).set({ status: "visited" })
+    .where(and(
+      eq(appointments.memberId, memberId),
+      eq(appointments.status, "confirmed"),
+    ));
   // 真实订单(收据层):订单 + 明细,成本来自服务目录
   const orderId = rid("ord");
   const svc = sqlite.prepare(
@@ -404,6 +425,33 @@ export async function recordVisit(user: SessionUser, memberId: string, opts: { s
     id: rid("oi"), orderId, serviceId: svc?.id ?? null,
     serviceName: opts.service, price: opts.amount, quantity: 1,
   }).run();
+  // 真实消费事件触发能量(order_consumed +20,dedupeKey 绑订单,退款可回滚)
+  const realCat = sqlite.prepare("SELECT id FROM cats WHERE store_id = ? AND member_id = ?")
+    .get(user.storeId, memberId) as { id: string } | undefined;
+  let couponRedeemed: { id: string; name: string; value: number } | null = null;
+  if (realCat) {
+    awardEnergy({
+      catId: realCat.id, userId: memberId, action: "order_consumed",
+      relatedType: "order", relatedId: orderId,
+      dedupeKey: `order_consumed:${realCat.id}:${orderId}`, source: "pos",
+    });
+  }
+  // 优惠券核销:真实状态流转 granted → redeemed(每次到店核销一张,以 coupon_grants 为准)
+  const coupon = sqlite.prepare(`
+    SELECT id, name, value FROM coupon_grants
+    WHERE member_id = ? AND status = 'granted'
+    ORDER BY granted_at ASC LIMIT 1
+  `).get(memberId) as { id: string; name: string; value: number } | undefined;
+  if (coupon) {
+    const claim = sqlite.prepare(`
+      UPDATE coupon_grants SET status='redeemed', used_at=?
+      WHERE id = ? AND status = 'granted'
+    `).run(now(), coupon.id);
+    if (claim.changes > 0) {
+      couponRedeemed = coupon;
+      await audit(user.name, "coupon.redeem", coupon.id, { orderId, member: memberId, value: coupon.value });
+    }
+  }
   // 猫咪喂食
   const cat = (await db.select().from(memberCats).where(eq(memberCats.memberId, memberId)).limit(1))[0];
   if (cat) {
@@ -423,7 +471,33 @@ export async function recordVisit(user: SessionUser, memberId: string, opts: { s
     confidence: 1, createdAt: now(), createdByAgent: null,
   });
   await audit(user.name, "member.visit", memberId, opts);
-  return { recId };
+  return { recId, orderId, couponRedeemed };
+}
+
+/** 订单退款:状态流转 + 回滚该订单触发的能量 + 冲减财务收入(幂等:已退款再退报错) */
+export async function refundOrder(user: SessionUser, orderId: string, reason: string) {
+  const o = sqlite.prepare("SELECT * FROM orders WHERE id = ? AND store_id = ?")
+    .get(orderId, user.storeId) as Record<string, unknown> | undefined;
+  if (!o) throw new HttpError(404, "订单不存在");
+  if (o.status === "refunded") throw new HttpError(400, "该订单已退款,不能重复操作");
+  const claim = sqlite.prepare("UPDATE orders SET status='refunded' WHERE id = ? AND status != 'refunded'").run(orderId);
+  if (claim.changes === 0) throw new HttpError(400, "订单状态已变更,请刷新");
+  // 回滚能量:找到该订单触发的 order_consumed 交易并反转
+  const txs = sqlite.prepare(`
+    SELECT dedupe_key FROM energy_transactions
+    WHERE related_id = ? AND action = 'order_consumed' AND reversed = 0
+  `).all(orderId) as Array<{ dedupe_key: string }>;
+  const { reverseEnergy } = await import("./cats/engine");
+  for (const t of txs) reverseEnergy(t.dedupe_key, `订单退款:${reason}`);
+  // 财务冲减:负向收入条目(任务归因的也同步冲减)
+  await db.insert(financeEntries).values({
+    id: rid("fe"), storeId: user.storeId,
+    taskId: (o.task_id as string) ?? null, strategyId: null,
+    type: "revenue", amount: -Number(o.total_amount ?? 0),
+    note: `订单退款冲减:${reason}`, occurredAt: now(),
+  });
+  await audit(user.name, "order.refund", orderId, { reason, amount: o.total_amount });
+  return { ok: true, energyReversed: txs.length };
 }
 
 /** 发放优惠券(仅已批准任务内) */

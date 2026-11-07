@@ -9,6 +9,7 @@ import { getOrCreateConversation, loadPending } from "@/lib/sales/conversation-e
 import { bestieReply } from "@/lib/cats/persona";
 import { extractAndSave } from "@/lib/memory/extractor";
 import { getLlmConfig } from "@/lib/llm";
+import { createHash } from "node:crypto";
 import { MemberCatView } from "@/mock-data/types";
 
 /** 闺蜜喵对话:绑定会员 → 人格聊天 + 记忆提取 + 能量;未绑定 → 店铺导购(规则) */
@@ -101,8 +102,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ storeSl
     catId: cat.id, userId: bound.member_id as string, action: "effective_interaction",
     dedupeKey: `eff:${cat.id}:${hash}`, source: "chat",
   });
-  if (e1.ok) awardBond(cat.id, bound.member_id as string, "daily_first_chat", "每日首次聊天");
-  if (text.length >= 6) awardBond(cat.id, bound.member_id as string, "share_style", "有效分享");
+  if (e1.ok) awardBond({
+    catId: cat.id, userId: bound.member_id as string,
+    action: "daily_first_chat", reason: "每日首次聊天",
+    dedupeKey: `daily_first_chat:${cat.id}:${new Date().toISOString().slice(0, 10)}`,
+  });
+  // 有效互动:同一句话哈希去重;聊天类亲密度每日上限由引擎强制
+  if (text.length >= 6) {
+    const textHash = createHash("sha256").update(text).digest("hex").slice(0, 24);
+    awardBond({
+      catId: cat.id, userId: bound.member_id as string,
+      action: "effective_chat", reason: "有效互动",
+      dedupeKey: `effective_chat:${cat.id}:${textHash}`,
+    });
+  }
 
   // 预约成功 → appointment_done 能量
   const apptCard = (cards as Array<{ type: string; appointmentId?: string }>).find((c) => c.type === "appointment");
@@ -112,13 +125,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ storeSl
       relatedType: "appointment", relatedId: apptCard.appointmentId,
       dedupeKey: `appointment_done:${apptCard.appointmentId}`,
     });
-    awardBond(cat.id, bound.member_id as string, "appointment_done", "完成预约");
+    awardBond({
+      catId: cat.id, userId: bound.member_id as string,
+      action: "appointment_done", reason: "完成预约",
+      dedupeKey: `appointment_done:${apptCard.appointmentId}`,
+    });
   }
 
+  // 响应前重取猫:能量/亲密度奖励要在返回值里体现(否则前端显示滞后一拍)
+  const freshCat = sqlite.prepare("SELECT * FROM cats WHERE id = ?").get(cat.id) as typeof cat | undefined;
   return NextResponse.json({
     text: text2, cards, quickReplies, stage, engine,
     mode: "bestie",
-    cat: catView(cat),
+    cat: catView(freshCat ?? cat),
     newMemories,
     energyEvents: [e1, e2].filter((e) => e.ok).map((e) => e.delta),
   });

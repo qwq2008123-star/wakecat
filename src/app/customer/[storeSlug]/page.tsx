@@ -250,13 +250,43 @@ function BestieChatPanel({ storeSlug, visitorId, bound, catName, onEnergy, seed,
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    // 先给欢迎语,再异步拉会话历史(有历史则覆盖——刷新后图片互动可恢复)
     setMsgs([{
       from: "emp",
       text: bound
         ? `我在呢~${catName ?? "我"}一直记得你说过的话。想聊点什么,或者让我帮你挑款式都行 🐾`
         : "你好呀~绑定会员后我就正式成为你的闺蜜猫,记得住你的喜好哦。现在也可以先挑款式、查价格!",
     }]);
-  }, [bound, catName]);
+    if (!visitorId || !bound) return;
+    let alive = true;
+    (async () => {
+      try {
+        const j = await fetch(`/api/customer/${storeSlug}/messages?visitorId=${visitorId}`).then((x) => x.json());
+        const hist: Msg[] = [];
+        for (const m of (j.messages ?? []) as Array<{
+          direction: string; content: string; human: boolean; channel: string;
+          imagePath?: string | null; catName?: string | null; createdAt: string;
+        }>) {
+          if (m.direction === "in") {
+            hist.push({ from: "user", text: m.content === "[图片]" ? "看看这张~" : m.content, image: m.imagePath ?? undefined });
+          } else {
+            const label = m.channel === "cat-miss"
+              ? `🐱 ${m.catName ?? catName ?? "猫咪"}想你啦`
+              : m.channel === "in-site" ? "💌 店铺消息"
+              : m.human ? "💬 芳姐(老板娘)" : null;
+            hist.push({
+              from: "emp",
+              text: label ? `${label}: ${m.content}` : m.content,
+              image: m.imagePath ?? undefined,
+              engine: m.channel === "cat" ? undefined : undefined,
+            });
+          }
+        }
+        if (alive && hist.length) setMsgs(hist.slice(-30));
+      } catch { /* 历史拉取失败不阻塞聊天 */ }
+    })();
+    return () => { alive = false; };
+  }, [bound, catName, visitorId, storeSlug]);
 
   useEffect(() => { boxRef.current?.scrollTo({ top: boxRef.current.scrollHeight, behavior: "smooth" }); }, [msgs, busy]);
 
@@ -329,7 +359,11 @@ function BestieChatPanel({ storeSlug, visitorId, bound, catName, onEnergy, seed,
         (s: { id: string; name: string; price: number; durationMin: number }) => ({ ...s, isNew: false }));
       setMsgs((m) => [...m, {
         from: "emp",
-        text: j.imageError ? `图片没存上(${j.imageError}),再试一次?` : comment,
+        text: j.imageError
+          ? `图片没存上(${j.imageError}),再试一次?`
+          : j.analysis?.engine === "failed"
+            ? `(AI 没能识别这张图,已照常收藏)${comment}`
+            : comment,
         engine: j.analysis?.engine === "llm" ? "llm" : undefined,
         newMemories: j.newMemories,
         quick: ["我想预约"],

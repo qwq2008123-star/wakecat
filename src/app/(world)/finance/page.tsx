@@ -38,10 +38,10 @@ export default function FinancePage() {
 
       {/* 总览 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-        <StatTile label="营销成本" value={`¥${f.cost.toLocaleString()}`} sub="券 + 触达" accent="var(--red)" />
-        <StatTile label="实际消费" value={`¥${f.consumption.toLocaleString()}`} sub="唤回到店消费" accent="var(--green)" />
-        <StatTile label="增量利润" value={`¥${f.profit.toLocaleString()}`} sub="消费 − 成本" accent="var(--brand-2)" />
-        <StatTile label="投入产出比" value={f.cost > 0 ? `${(f.consumption / f.cost).toFixed(1)} 倍` : "—"} sub="本月全策略均值" accent="var(--yellow)" />
+        <StatTile label="预测回流" value={`¥${(f.predictedRevenue ?? 0).toLocaleString()}`} sub="策略预估(军师喵)" accent="var(--brand-2)" />
+        <StatTile label="实际消费" value={`¥${(f.actualRevenue ?? f.consumption).toLocaleString()}`} sub="真实订单(剔除退款)" accent="var(--green)" />
+        <StatTile label="AI 增量" value={`¥${(f.incrementalRevenue ?? 0).toLocaleString()}`} sub="AI 唤回归因订单" accent="var(--yellow)" />
+        <StatTile label="营销成本" value={`¥${f.cost.toLocaleString()}`} sub={`AI 增量 ROI ${f.cost > 0 && f.incrementalRevenue ? ((f.incrementalRevenue / f.cost).toFixed(1) + " 倍") : "—"}`} accent="var(--red)" />
       </div>
 
       {/* 漏斗 + 每一环的猫员工 */}

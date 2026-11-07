@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { resolveStore } from "@/lib/store";
 import { ensureBootstrap } from "@/lib/bootstrap";
 import { getBoundMember } from "@/lib/customer-identity";
 import { adoptCat } from "@/lib/cats/engine";
 import { collectInspiration, listInspiration, deleteInspiration } from "@/lib/inspiration";
+import { getOrCreateConversation } from "@/lib/sales/conversation-engine";
+import { sqlite } from "@/lib/db/client";
 
 /** C端灵感收藏室:GET 列表 / POST 收藏+看图分析 / DELETE 移除 */
 export async function GET(req: Request, { params }: { params: Promise<{ storeSlug: string }> }) {
@@ -35,6 +38,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ storeSl
     imageDataUrl: typeof body.imageDataUrl === "string" ? body.imageDataUrl : undefined,
     note: String(body.note ?? ""), source: String(body.source ?? "upload"),
   });
+  // 第二阶段:聊天里发的图,把「用户图片消息 + 猫的回应」落进会话(刷新后可恢复),
+  // 灵感条目与消息通过 inspirationId 互相关联
+  if (String(body.source ?? "") === "chat") {
+    const identityId = `h5:${String(body.visitorId ?? "")}`;
+    const convId = getOrCreateConversation(store.id, identityId, "h5");
+    const now = new Date().toISOString();
+    const ins = sqlite.prepare(`
+      INSERT INTO conversation_messages (id, conversation_id, direction, content, meta_json, created_at)
+      VALUES (?,?,?,?,?,?)
+    `);
+    ins.run(`cm_${randomUUID().replace(/-/g, "").slice(0, 12)}`, convId, "in",
+      String(body.note ?? "").trim() || "[图片]",
+      JSON.stringify({ type: "image", imagePath: r.item.imageUrl, inspirationId: r.item.id }), now);
+    ins.run(`cm_${randomUUID().replace(/-/g, "").slice(0, 12)}`, convId, "out",
+      r.analysis.catComment || "图我收下啦~",
+      JSON.stringify({
+        channel: "cat", type: "image_reply", inspirationId: r.item.id,
+        engine: r.analysis.engine, catName: cat.name,
+        imagePath: r.item.imageUrl,
+        recognized: r.analysis.engine === "llm",
+      }), new Date(Date.now() + 1).toISOString());
+  }
   return NextResponse.json(r, { status: r.imageError ? 202 : 200 });
 }
 

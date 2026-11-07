@@ -387,6 +387,7 @@ export const inspirationItems = sqliteTable("inspiration_items", {
   source: text("source").notNull().default("upload"),
   createdAt: text("created_at").notNull(),
   deletedAt: text("deleted_at"),
+  imageHash: text("image_hash"),
 });
 
 export const products = sqliteTable("products", {
@@ -458,6 +459,8 @@ export const catBondLogs = sqliteTable("cat_bond_logs", {
   delta: integer("delta").notNull(),
   reason: text("reason").notNull(),
   createdAt: text("created_at").notNull(),
+  action: text("action").notNull().default("legacy"),
+  dedupeKey: text("dedupe_key"),
 });
 
 export const merchantActions = sqliteTable("merchant_actions", {

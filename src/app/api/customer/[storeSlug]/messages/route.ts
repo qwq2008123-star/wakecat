@@ -12,25 +12,33 @@ export async function GET(req: Request, { params }: { params: Promise<{ storeSlu
   const visitorId = new URL(req.url).searchParams.get("visitorId");
   if (!visitorId) return NextResponse.json({ messages: [] });
   // 会话由 chat 路由以 identity_id = 'h5:'+visitorId 创建;兼容旧的 identity 行主键写法
+  // 跨店隔离:只读本店、本访客(且身份绑定归属本店)的会话
   const rows = sqlite.prepare(`
     SELECT direction, content, meta_json, created_at FROM conversation_messages
     WHERE conversation_id = (
       SELECT id FROM conversations
-      WHERE identity_id = ? OR identity_id = (
-        SELECT id FROM customer_identities WHERE store_id = ? AND channel='h5' AND external_user_id = ?
+      WHERE store_id = ? AND (
+        identity_id = ? OR identity_id = (
+          SELECT id FROM customer_identities WHERE store_id = ? AND channel='h5' AND external_user_id = ?
+        )
       )
       ORDER BY created_at DESC LIMIT 1
     )
     ORDER BY created_at ASC, rowid ASC
-  `).all(`h5:${visitorId}`, store.id, visitorId) as Array<Record<string, unknown>>;
+  `).all(store.id, `h5:${visitorId}`, store.id, visitorId) as Array<Record<string, unknown>>;
   return NextResponse.json({
     messages: rows.map((r) => {
-      const meta = JSON.parse((r.meta_json as string) || "{}") as { human?: boolean; channel?: string };
+      const meta = JSON.parse((r.meta_json as string) || "{}") as {
+        human?: boolean; channel?: string; imagePath?: string; inspirationId?: string; catName?: string;
+      };
       return {
         direction: r.direction as string,
         content: r.content as string,
         human: Boolean(meta.human),
         channel: meta.channel ?? (meta.human ? "human" : "ai"),
+        imagePath: meta.imagePath ?? null,
+        inspirationId: meta.inspirationId ?? null,
+        catName: meta.catName ?? null,
         createdAt: r.created_at as string,
       };
     }),

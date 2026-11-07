@@ -33,6 +33,15 @@ function openDb(): Database.Database {
     if (!cols("agent_configs").includes("auto_run")) {
       raw.exec("ALTER TABLE agent_configs ADD COLUMN auto_run INTEGER NOT NULL DEFAULT 0");
     }
+    if (!cols("cat_bond_logs").includes("action")) {
+      raw.exec("ALTER TABLE cat_bond_logs ADD COLUMN action TEXT NOT NULL DEFAULT 'legacy'");
+    }
+    if (!cols("cat_bond_logs").includes("dedupe_key")) {
+      raw.exec("ALTER TABLE cat_bond_logs ADD COLUMN dedupe_key TEXT");
+    }
+    if (!cols("inspiration_items").includes("image_hash")) {
+      raw.exec("ALTER TABLE inspiration_items ADD COLUMN image_hash TEXT");
+    }
     for (const col of ["service_name TEXT", "staff_name TEXT", "scheduled_for TEXT", "source TEXT NOT NULL DEFAULT 'seller'"]) {
       const name = col.split(" ")[0];
       if (!cols("appointments").includes(name)) {
