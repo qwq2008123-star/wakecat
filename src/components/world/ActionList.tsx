@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import {
-  CircleCheck, CircleX, Copy, Check, ClipboardList, CalendarClock,
+  CircleCheck, CircleX, Check, ClipboardList, CalendarClock,
   MessageSquareText, Ban, Send, ChevronRight,
 } from "lucide-react";
 import { SectionTitle } from "./ui";
@@ -115,6 +115,13 @@ export default function ActionList({ refreshKey }: { refreshKey: number }) {
                         <div>
                           <div className="text-[13.5px] font-semibold">{item.title}</div>
                           <div className="text-[12px] mt-1" style={{ color: "var(--ink-2)" }}>{item.reason}</div>
+                          {item.type === "manual_send" && item.payload.body ? (
+                            <div className="panel2 mt-2 px-3.5 py-2.5 text-[13px] leading-relaxed rounded-xl"
+                              style={{ borderLeft: "2px solid var(--orange)" }}>
+                              「{item.memberName}」将收到的消息:<br />
+                              <span style={{ color: "var(--ink)" }}>{item.payload.body as string}</span>
+                            </div>
+                          ) : null}
                           <div className="text-[11.5px] mt-1.5" style={{ color: "var(--brand-2)" }}>→ {item.suggestedAction}</div>
                           <ItemActions item={item} onDecide={decide} onMarkSent={markSent} onSkip={skip} onCopy={(t) => { setCopied(item.dedupeKey); navigator.clipboard?.writeText(t); }} copied={copied === item.dedupeKey} />
                         </div>
@@ -150,8 +157,11 @@ function ItemActions({ item, onDecide, onMarkSent, onSkip, onCopy, copied }: {
       )}
       {item.type === "manual_send" && (
         <>
-          <button className="btn btn-orange btn-sm" onClick={() => { onCopy(item.payload.body as string); onMarkSent(item.payload.messageId as string, item.dedupeKey); }}>
-            <Copy size={13} /> 复制文案并标记已发
+          <button className="btn btn-sm" onClick={() => onCopy(item.payload.body as string)}>
+            {copied ? "✓ 已复制,去企微粘贴" : "复制文案"}
+          </button>
+          <button className="btn btn-green btn-sm" onClick={() => onMarkSent(item.payload.messageId as string, item.dedupeKey)}>
+            我已在企微发送
           </button>
           <button className="btn btn-red btn-sm" onClick={() => onSkip(item.dedupeKey, item.type, item.title)}>放弃</button>
         </>
