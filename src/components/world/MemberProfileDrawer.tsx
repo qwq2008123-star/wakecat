@@ -90,7 +90,7 @@ export default function MemberProfileDrawer({ member, onClose }: { member: Membe
                 <span className="tag" style={{ color: meta.accent, borderColor: meta.accent }}>{meta.label}</span>
               </div>
               <div className="text-[12px] mt-1" style={{ color: "var(--ink-2)" }}>
-                {member.phoneMasked} · 爱猫「{member.catName}」 · 入会 {member.joinedAt}
+                {member.phoneMasked} · 爱猫「{member.catName}」 · 入会 {member.joinedAt?.slice(0, 10) ?? "未知"}
               </div>
               <div className="flex gap-1.5 mt-2 flex-wrap">
                 {member.tags.map((t) => <span key={t} className="tag">{t}</span>)}

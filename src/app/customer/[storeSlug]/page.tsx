@@ -463,7 +463,7 @@ function GrowthPanel({ storeSlug, visitorId, cat, onRefresh }: {
     if (!visitorId) return;
     const [m, t] = await Promise.all([
       fetch(`/api/memories?visitorId=${visitorId}&storeSlug=${storeSlug}`).then((x) => x.json()).catch(() => ({ memories: [] })),
-      cat ? fetch(`/api/cats/mine?visitorId=${visitorId}`).then((x) => x.json()).catch(() => ({ transactions: [] })) : Promise.resolve({ transactions: [] }),
+      cat ? fetch(`/api/cats/mine?visitorId=${visitorId}&storeSlug=${storeSlug}`).then((x) => x.json()).catch(() => ({ transactions: [] })) : Promise.resolve({ transactions: [] }),
     ]);
     setMemories(m.memories ?? []);
     setTransactions(t.transactions ?? []);

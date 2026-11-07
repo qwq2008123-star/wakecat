@@ -81,8 +81,10 @@ export default function MembersPage() {
   const newCount = members.filter((m) => m.zone === "new").length;
 
   const filtered = useMemo(() => {
-    let list = members.filter((m) => m.name.includes(query.trim()));
-    if (mode === "list") list = list.filter((m) => habitatOf(m) === habitat);
+    const q = query.trim();
+    let list = members.filter((m) => m.name.includes(q));
+    // 有搜索词时全局搜索(不限当前街区);无词才按街区过滤
+    if (mode === "list" && !q) list = list.filter((m) => habitatOf(m) === habitat);
     return [...list].sort((a, b) => {
       if (sort === "spend") return b.spend - a.spend;
       if (sort === "recent") return a.lastVisitDays - b.lastVisitDays;
