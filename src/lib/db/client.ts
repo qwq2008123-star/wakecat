@@ -56,6 +56,9 @@ function openDb(): Database.Database {
     if (!cols("staff_users").includes("password_hash")) {
       raw.exec("ALTER TABLE staff_users ADD COLUMN password_hash TEXT");
     }
+    if (!cols("cats").includes("art_style")) {
+      raw.exec("ALTER TABLE cats ADD COLUMN art_style TEXT NOT NULL DEFAULT 'A'");
+    }
     for (const col of ["service_name TEXT", "staff_name TEXT", "scheduled_for TEXT", "source TEXT NOT NULL DEFAULT 'seller'"]) {
       const name = col.split(" ")[0];
       if (!cols("appointments").includes(name)) {

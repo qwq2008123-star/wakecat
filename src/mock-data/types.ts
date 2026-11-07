@@ -8,6 +8,7 @@ export type CatState = "happy" | "awake" | "drowsy" | "sleep";
 export type RiskLevel = "low" | "mid" | "high";
 export type MemberLevel = "普通" | "白银" | "黄金" | "钻石";
 export type CatColorway = "orange" | "gray" | "calico" | "cow" | "ragdoll" | "purple";
+export type CatArtStyle = "A" | "B" | "C" | "D" | "E";
 
 export interface MemberCatView {
   id: string;

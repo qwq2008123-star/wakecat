@@ -321,6 +321,7 @@ export const cats = sqliteTable("cats", {
   lastActiveAt: text("last_active_at").notNull(),
   adoptedAt: text("adopted_at").notNull(),
   updatedAt: text("updated_at").notNull(),
+  artStyle: text("art_style").notNull().default("A"),
 });
 
 export const userMemories = sqliteTable("user_memories", {

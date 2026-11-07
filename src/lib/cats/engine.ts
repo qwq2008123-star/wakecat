@@ -19,7 +19,7 @@ export interface CatView {
   name: string; personality: string; colorway: string;
   energy: number; bond: number; level: number; stage: CatStage;
   decorations: string[]; adoptedAt: string; lastActiveAt: string;
-  energyToday: number; // 今日已获得能量(含上限判断)
+  energyToday: number; artStyle: string; // 今日已获得能量(含上限判断)
 }
 
 const rid = (p: string) => `${p}_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -76,7 +76,7 @@ export function adoptCat(storeId: string, memberId: string, name?: string) {
   if (existing) return existing;
   const colorways = ["orange", "gray", "calico", "cow", "ragdoll", "purple"];
   const cat = {
-    id: rid("cat"), storeId, memberId,
+    id: rid("cat"), storeId, memberId, artStyle: "A" as const,
     name: name?.trim() || "糯米",
     personality: "温柔体贴,记得住你说过的话",
     colorway: colorways[Math.floor(Math.random() * colorways.length)],
@@ -85,6 +85,19 @@ export function adoptCat(storeId: string, memberId: string, name?: string) {
   };
   db.insert(cats).values(cat).run();
   return cat;
+}
+
+/** 客户自选猫造型(A-E) */
+export function setCatStyle(storeId: string, memberId: string, style: string): string {
+  sqlite.prepare("UPDATE cats SET art_style = ?, updated_at = ? WHERE store_id = ? AND member_id = ?")
+    .run(style, nowIso(), storeId, memberId);
+  return style;
+}
+
+export function getCatStyle(storeId: string, memberId: string): string {
+  const c = sqlite.prepare("SELECT art_style FROM cats WHERE store_id = ? AND member_id = ?")
+    .get(storeId, memberId) as { art_style: string } | undefined;
+  return c?.art_style ?? "A";
 }
 
 /** 能量奖励:L3 级操作——dedupe 防刷 + 每日上限 + 交易留痕 + 退款回滚 */
@@ -247,6 +260,7 @@ export function catView(cat: typeof cats.$inferSelect): CatView {
   return {
     id: cat.id, storeId: cat.storeId, memberId: cat.memberId,
     name: cat.name, personality: cat.personality, colorway: cat.colorway,
+    artStyle: (cat as { art_style?: string }).art_style ?? (cat as { artStyle?: string }).artStyle ?? "A",
     energy: cat.energy, bond: cat.bond, level: cat.level,
     stage: cat.stage as CatStage,
     decorations: JSON.parse(cat.decorationsJson || "[]"),

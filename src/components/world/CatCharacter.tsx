@@ -8,7 +8,8 @@
    - 动效:摇尾、眨眼、工作浮动;effect 由办公场景按任务状态传入
    ============================================================ */
 import { useId } from "react";
-import { CatColorway, CatState } from "@/mock-data/types";
+import { CatColorway, CatState, CatArtStyle } from "@/mock-data/types";
+import { AltCatArt } from "./CatArtStyles";
 
 const PALETTES: Record<CatColorway, { base: string; dark: string; deep: string; light: string; belly: string; patch?: string }> = {
   orange: { base: "#F5A25D", dark: "#C97F3D", deep: "#A86428", light: "#FFE3C2", belly: "#FFEED6" },
@@ -30,6 +31,8 @@ export default function CatCharacter({
   working = false,
   effect = null,
   className = "",
+  /** 画风:A=现状 2.5D(默认);B贴纸/C毛绒/D果冻/E像素 由客户在 C端自选 */
+  style = "A",
 }: {
   colorway?: CatColorway;
   state?: CatState;
@@ -40,6 +43,7 @@ export default function CatCharacter({
   /** 办公场景专用:executing→消息气泡,planning→悬浮策略面板 */
   effect?: "bubble" | "holo" | null;
   className?: string;
+  style?: CatArtStyle;
 }) {
   const uid = useId().replace(/[:]/g, "");
   const p = PALETTES[colorway] ?? PALETTES.orange;
@@ -241,6 +245,39 @@ export default function CatCharacter({
   const premiumCrown = badge === "premium" ? (
     <path d="M49 21 l4.6 -10.5 7 7 7 -8.8 7 8.8 7 -7 4.6 10.5 Z" fill="none" stroke="#FFC94D" strokeWidth="1.9" strokeLinejoin="round" opacity=".92" />
   ) : null;
+
+  /* ---------- 造型 B-E:客户自选画法(职业装备保持 B端 A 画法专属) ---------- */
+  if (style && style !== "A") {
+    const alt = style as Exclude<CatArtStyle, "A">;
+    return (
+      <svg width={size} height={(size * 116) / 120} viewBox="0 0 120 116" className={className} style={{ display: "block", overflow: "visible" }} aria-hidden>
+        <defs>
+          <linearGradient id={G("gold")} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#FFE59A" /><stop offset="45%" stopColor="#FFC94D" /><stop offset="100%" stopColor="#D9A428" />
+          </linearGradient>
+          <radialGradient id={G("gem")} cx="35%" cy="35%" r="80%">
+            <stop offset="0%" stopColor="#FFB3C2" /><stop offset="100%" stopColor="#E23A5F" />
+          </radialGradient>
+          <linearGradient id={G("cape")} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#8A4DBF" /><stop offset="100%" stopColor="#5C3390" />
+          </linearGradient>
+          <linearGradient id={G("jd")} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={p.light} /><stop offset="55%" stopColor={p.base} /><stop offset="100%" stopColor={p.deep} />
+          </linearGradient>
+          <radialGradient id={G("ground")} cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#000000" stopOpacity=".38" /><stop offset="100%" stopColor="#000000" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <ellipse cx="60" cy="109" rx="36" ry="6" fill={`url(#${G("ground")})`} />
+        {badgeRing}
+        <g className={working ? "anim-bob" : undefined}>
+          {accessory === "crown" && backGear}
+          <AltCatArt style={alt} state={state} p={p} crown={accessory === "crown"} gold={`url(#${G("gold")})`} gem={`url(#${G("gem")})`} uid={uid} />
+        </g>
+        {effectLayer}
+      </svg>
+    );
+  }
 
   return (
     <svg

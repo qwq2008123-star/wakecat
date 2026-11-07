@@ -16,7 +16,7 @@ import type { CatColorway } from "@/mock-data/types";
 type CatView = {
   id: string; name: string; personality: string; colorway: string;
   energy: number; bond: number; level: number; stage: string;
-  decorations: string[]; energyToday: number;
+  decorations: string[]; energyToday: number; artStyle?: string;
 };
 type Card =
   | { type: "services"; title: string; items: { id: string; name: string; price: number; durationMin: number; isNew: boolean }[] }
@@ -108,7 +108,8 @@ export default function CustomerPage({ params }: { params: Promise<{ storeSlug: 
                 <div className="aurora" style={{ width: 280, height: 180, top: -60, left: "20%", background: "rgba(124,108,255,.2)" }} />
                 <div className="relative flex flex-col items-center">
                   <div className="anim-floaty">
-                    <CatCharacter colorway={(cat?.colorway ?? "orange") as CatColorway} state={catState as never} accessory="crown" size={140} />
+                    <CatCharacter colorway={(cat?.colorway ?? "orange") as CatColorway} state={catState as never} accessory="crown" size={140}
+                    style={(cat?.artStyle ?? "A") as never} />
                   </div>
                   <div className="text-[17px] font-extrabold mt-2">{cat?.name ?? "尚未领养"} <span className="text-[12px] font-semibold" style={{ color: "var(--ink-3)" }}>Lv.{cat?.level ?? 1}</span></div>
                   <div className="text-[11.5px] mt-0.5" style={{ color: cat && cat.stage === "dormant" ? "var(--red)" : "var(--ink-2)" }}>
@@ -493,6 +494,7 @@ function CardView({ card, onQuick }: { card: Card; onQuick: (q: string) => void 
 function GrowthPanel({ storeSlug, visitorId, cat, onRefresh }: {
   storeSlug: string; visitorId: string; cat: CatView | null; onRefresh: () => void;
 }) {
+  void storeSlug;
   const [memories, setMemories] = useState<MemoryRow[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -582,6 +584,8 @@ function GrowthPanel({ storeSlug, visitorId, cat, onRefresh }: {
           ))}
         </div>
       </div>
+
+      <StylePickerCard storeSlug={storeSlug} visitorId={visitorId} artStyle={cat?.artStyle ?? "A"} colorway={(cat?.colorway ?? "orange") as CatColorway} onSaved={onRefresh} />
 
       <div className="surface p-5">
         <div className="flex items-center gap-2 text-[14px] font-bold mb-3">
@@ -775,4 +779,50 @@ async function fileToCompressedDataUrl(file: File, max = 720, quality = 0.8): Pr
   canvas.getContext("2d")!.drawImage(bitmap, 0, 0, w, h);
   bitmap.close();
   return canvas.toDataURL("image/jpeg", quality);
+}
+
+/* ================= 猫咪造型选择(A-E) ================= */
+const STYLE_OPTIONS: { key: "A" | "B" | "C" | "D" | "E"; name: string; desc: string }[] = [
+  { key: "A", name: "经典 2.5D", desc: "渐变体积,圆润可靠" },
+  { key: "B", name: "贴纸描边", desc: "粗描边,辨识度最高" },
+  { key: "C", name: "毛绒绒", desc: "毛边治愈,最想抱" },
+  { key: "D", name: "果冻高光", desc: "玻璃质感,最精致" },
+  { key: "E", name: "像素猫舍", desc: "8-bit,游戏感" },
+];
+function StylePickerCard({ storeSlug, visitorId, artStyle, colorway, onSaved }: {
+  storeSlug: string; visitorId: string; artStyle: string; colorway: CatColorway; onSaved: () => void;
+}) {
+  const [saving, setSaving] = useState<string | null>(null);
+  async function pick(k: "A" | "B" | "C" | "D" | "E") {
+    if (k === artStyle || saving) return;
+    setSaving(k);
+    try {
+      await fetch("/api/cats/style", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ visitorId, storeSlug, style: k }),
+      });
+      onSaved();
+    } finally { setSaving(null); }
+  }
+  return (
+    <div className="surface p-5">
+      <div className="flex items-center gap-2 text-[14px] font-bold mb-1">
+        <Sparkles size={14} style={{ color: "var(--brand-2)" }} /> 猫咪造型
+        <span className="text-[10.5px] font-normal ml-auto" style={{ color: "var(--ink-3)" }}>选一只你的画法,随时可换</span>
+      </div>
+      <div className="grid grid-cols-5 gap-2 mt-3">
+        {STYLE_OPTIONS.map((o) => (
+          <button key={o.key} className="panel2 p-2 text-center" title={o.desc}
+            style={artStyle === o.key ? { border: "1.5px solid var(--brand-2)" } : undefined}
+            onClick={() => pick(o.key)} disabled={saving !== null}>
+            <div style={{ pointerEvents: "none" }}>
+              <CatCharacter colorway={colorway} state="awake" size={44} style={o.key} />
+            </div>
+            <div className="text-[10px] font-bold mt-1">{o.name.replace("方案 ", "")}</div>
+            {artStyle === o.key && <div className="text-[9px]" style={{ color: "var(--green)" }}>使用中</div>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
