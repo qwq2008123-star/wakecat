@@ -3,7 +3,7 @@
 /* AI 任务大厅:给喵老板下目标 → AI 团队编排 → 你批准 → 销售喵真实执行(半自动触达) */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronDown, CircleCheck, CircleX, Pause, Info, SendHorizonal, Loader2 } from "lucide-react";
+import { ChevronDown, CircleCheck, CircleX, Pause, Info, SendHorizonal, Loader2, Play } from "lucide-react";
 import CatCharacter from "@/components/world/CatCharacter";
 import { DemoTag, PageHeader } from "@/components/world/ui";
 import { dataProvider } from "@/lib/data-provider";
@@ -223,9 +223,10 @@ export default function TasksPage() {
     if (status === "approved") setExpandedId(id);
   }
 
-  /* 下达目标 → 喵老板编排(SSE 直播:侦探体检 → 军师策略 → 待审批) */
-  async function submitGoal() {
-    const g = goal.trim();
+  /* 下达目标 → 喵老板编排(SSE 直播:侦探体检 → 军师策略 → 待审批;全自动开启时一跑到底) */
+  const DEMO_GOAL = "把 45 天没来的高价值会员唤回来,预算 50 元";
+  async function submitGoal(textArg?: string) {
+    const g = (textArg ?? goal).trim();
     if (!g || goalBusy) return;
     setGoalBusy(true); setGoalLogs([`▶ 你对喵老板说:「${g}」`]);
     try {
@@ -293,8 +294,13 @@ export default function TasksPage() {
             onChange={(e) => setGoal(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") submitGoal(); }}
           />
-          <button className="btn shrink-0" onClick={submitGoal} disabled={!goal.trim() || goalBusy}>
+          <button className="btn shrink-0" onClick={() => void submitGoal()} disabled={!goal.trim() || goalBusy}>
             {goalBusy ? <Loader2 size={14} className="anim-spin" /> : <SendHorizonal size={14} />} 下达
+          </button>
+          <button className="btn btn-ghost shrink-0" disabled={goalBusy}
+            title={`预置目标「${DEMO_GOAL}」一键下达;全自动模式开启时直达触达`}
+            onClick={() => { setGoal(DEMO_GOAL); void submitGoal(DEMO_GOAL); }}>
+            <Play size={14} /> 一键演示
           </button>
         </div>
         {goalLogs.length > 0 && (
