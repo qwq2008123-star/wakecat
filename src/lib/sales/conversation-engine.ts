@@ -123,10 +123,13 @@ export function getOrCreateConversation(storeId: string, identityId: string, cha
 
 export function loadPending(conversationId: string): PendingContext {
   const row = sqlite.prepare(`
-    SELECT meta_json FROM conversation_messages
+    SELECT meta_json, created_at FROM conversation_messages
     WHERE conversation_id = ? AND direction='out' ORDER BY created_at DESC, rowid DESC LIMIT 1
-  `).get(conversationId) as { meta_json: string } | undefined;
+  `).get(conversationId) as { meta_json: string; created_at: string } | undefined;
   try {
+    // 上下文时效:超过 5 分钟的 pending 自动过期(防劫持后续对话)
+    const age = Date.now() - new Date(row?.created_at ?? 0).getTime();
+    if (age > 5 * 60 * 1000) return {};
     const meta = JSON.parse(row?.meta_json || "{}");
     return meta.pending ?? {};
   } catch { return {}; }

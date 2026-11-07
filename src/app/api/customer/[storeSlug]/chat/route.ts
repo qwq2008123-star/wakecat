@@ -47,17 +47,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ storeSl
     strategyHint: "", joinedAt: "", catName: cat.name,
   };
 
-  // 路由优先级:① 有 pending 上下文(选时段/选服务)→ 回 conversation-engine
-  //            ② 销售意图关键词 → conversation-engine
-  //            ③ 其余 → 闺蜜人格
+  // 路由:只按销售意图关键词路由到 conversation-engine(真实排班/目录/预约),
+  //       其余全部走闺蜜人格(LLM 带记忆)。conversation-engine 的 pending
+  //       上下文由 handleCustomerMessage 内部检查。
   const identityId = `h5:${visitorId}`;
-  const convId = getOrCreateConversation(store.id, identityId, "h5");
-  const pending = loadPending(convId);
-  const salesIntent = /(预约|有空|多少钱|价格|优惠|会员权益|推荐|新品|款式|预算)/.test(text);
-  const hasPending = !!pending.action;
+  getOrCreateConversation(store.id, identityId, "h5");
+  const salesIntent = /(预约|有空|多少钱|价格|优惠|会员权益|推荐|新品|款式|预算|做「|周三|周四|周五|周六|周日|周一|周二)/.test(text);
   let text2: string, cards: unknown[] = [], quickReplies: string[] = [], stage = "chat", engine: string = config.apiKey ? "llm" : "rules";
 
-  if (hasPending || salesIntent) {
+  if (salesIntent) {
     const r = handleCustomerMessage({
       storeId: store.id, identityId, memberId: bound.member_id as string,
       member: memberView, message: text,
