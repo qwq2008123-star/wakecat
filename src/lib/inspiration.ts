@@ -84,18 +84,24 @@ async function visionAnalyze(config: LlmConfig, imageDataUrl: string, note: stri
   }
 }
 
-/* ---------- 标签 × 真实目录匹配 ---------- */
-export function matchServices(storeId: string, tags: string[], title: string): CatalogService[] {
+/* ---------- 标签 × 真实目录匹配 ----------
+   GLM 标签多为抽象风格词(简约/深邃),直接跟服务名对不上;
+   先从 标题+备注+标签 里抽具象款式词(猫眼/法式/渐变…),命中服务名给高分。 */
+const STYLE_WORDS = /(猫眼|法式|渐变|晕染|纯色|跳色|碎钻|手绘|极光|贴钻|延长|美睫|护理|卸甲|山丘|乳酪|水波纹)/g;
+
+export function matchServices(storeId: string, tags: string[], title: string, note = ""): CatalogService[] {
   const catalog = getCatalog(storeId);
-  const words = [...tags, title].join(" ");
+  const text = `${title} ${note} ${tags.join(" ")}`;
+  const words = new Set<string>();
+  for (const m of text.matchAll(STYLE_WORDS)) words.add(m[1]);
   return catalog
     .map((s) => {
       let score = 0;
+      for (const w of words) if (s.name.includes(w)) score += 3;
       for (const t of tags) if (t.length >= 2 && s.name.includes(t.slice(0, 2))) score += 2;
-      for (const ch of new Set(words.replace(/\s/g, ""))) if (s.name.includes(ch)) score += 0.3;
       return { s, score };
     })
-    .filter((x) => x.score >= 2)
+    .filter((x) => x.score >= 3)
     .sort((a, b) => b.score - a.score)
     .slice(0, 3)
     .map((x) => x.s);
@@ -226,8 +232,8 @@ function toItem(row: ItemRow): InspirationItemView {
   };
 }
 function matchServicesByRow(row: ItemRow, tags: string[]) {
-  // 按标签 + 标题匹配当前在售目录
-  const hit = matchServices(row.store_id, tags, row.title);
+  // 按标题+备注+标签匹配当前在售目录
+  const hit = matchServices(row.store_id, tags, row.title, row.note ?? "");
   return hit.map((s) => ({ id: s.id, name: s.name, price: s.price, durationMin: s.durationMin }));
 }
 

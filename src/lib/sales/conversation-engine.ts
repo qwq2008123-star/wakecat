@@ -293,8 +293,11 @@ export function handleCustomerMessage(opts: {
     return reply;
   }
 
-  // ⑤ 意图:预约(按「明天」「周六」「11-07」筛真实排班;一条出站消息同时保存时段和候选服务)
-  if (/(预约|有空|时间|几点|排班|明天|后天)/.test(text)) {
+  // ⑤ 意图:预约/点名做项目(预约关键词,或消息里能解析出具体服务名 + 做/来/想要)
+  //   覆盖:灵感卡「做「X」」直达、口语「我想做猫眼款」「来个渐变」、以及明确约时间
+  const mentionedSvcs = findMentionedServices(storeId, text);
+  if (/(预约|有空|时间|几点|排班|明天|后天)/.test(text)
+    || (mentionedSvcs.length > 0 && /(做|来|约|想要|试试|安排)/.test(text))) {
     const date = parseDate(text);
     const weekday = parseWeekday(text);
     let slots = getSlots(storeId, { date, weekday });
@@ -308,7 +311,7 @@ export function handleCustomerMessage(opts: {
       : "最近的可预约时段如下。绑定会员后我还能记住你的偏好哦~");
     const slotQuick = slots.slice(0, 3).map((s) => `${s.weekday}(${s.date.slice(5)})`);
     // 选时段前需要先定服务:用户点名的服务优先,否则给默认热门服务候选
-    const mentioned = findMentionedServices(storeId, text);
+    const mentioned = mentionedSvcs;
     const rec = recommendServices({ storeId, favoriteService: member?.favoriteService ?? null, limit: 1 });
     const primary = mentioned[0] ?? rec[0]?.service;
     if (primary) {
