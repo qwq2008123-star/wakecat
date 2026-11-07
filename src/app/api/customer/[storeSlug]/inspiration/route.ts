@@ -56,7 +56,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ storeSl
       JSON.stringify({
         channel: "cat", type: "image_reply", inspirationId: r.item.id,
         engine: r.analysis.engine, catName: cat.name,
-        imagePath: r.item.imageUrl,
+        // 不带 imagePath:图是用户刚发的,回应里重复显示同一张很怪
         recognized: r.analysis.engine === "llm",
       }), new Date(Date.now() + 1).toISOString());
   }
