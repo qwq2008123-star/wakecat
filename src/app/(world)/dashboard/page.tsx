@@ -1,7 +1,6 @@
 "use client";
 
-/* 驾驶舱 v3:第一屏 = 今日行动清单(商家行动层)。
-   数据报告降为次级;AI 办公室保留(品牌与状态可视化)。 */
+/* 驾驶舱 v4:第一屏 = 今日行动清单。真实工作流——每个动作都有真实后果。 */
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Sparkles, Target } from "lucide-react";
@@ -56,28 +55,29 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      {/* ① 今日目标 + 喵老板简报气泡 */}
+      {/* ① 今日行动清单(第一屏核心) */}
+      <div className="surface p-5">
+        <ActionList refreshKey={actionRefresh} />
+      </div>
+
+      {/* ② 今日目标 + 喵老板简报 */}
       <div className="surface relative overflow-hidden p-6">
         <div className="aurora" style={{ width: 360, height: 210, top: -100, left: "8%", background: "rgba(124,108,255,.2)" }} />
-        <div className="aurora" style={{ width: 300, height: 190, top: -80, right: "18%", background: "rgba(255,138,76,.14)" }} />
         <div className="relative grid lg:grid-cols-[1fr_380px] gap-5 items-center">
           <div>
             <div className="flex items-center gap-2 mb-2.5">
               <Sparkles size={15} style={{ color: "var(--brand-2)" }} />
               <span className="text-[12px] font-semibold tracking-wide" style={{ color: "var(--brand-2)" }}>WAKECAT 每日开工</span>
-              <span className="tag tag-green">真实数据库 · 60 名演示会员</span>
             </div>
-            <h1 className="text-[21px] md:text-[26px] font-extrabold leading-snug">{data.greeting}</h1>
-            <div className="mt-3.5 inline-flex items-center gap-2.5 surface-2 px-4 py-2.5 text-[13.5px]">
+            <h1 className="text-[21px] md:text-[24px] font-extrabold leading-snug">{data.greeting}</h1>
+            <div className="mt-3 inline-flex items-center gap-2.5 surface-2 px-4 py-2.5 text-[13.5px]">
               <Target size={15} style={{ color: "var(--orange)" }} />
               <span style={{ color: "var(--ink-2)" }}>今日经营目标</span>
               <span className="font-bold">{data.goal}</span>
             </div>
           </div>
           <div className="relative flex gap-3 items-start">
-            <div className="shrink-0 -mt-6">
-              <CatCharacter colorway="orange" state="awake" accessory="crown" size={72} />
-            </div>
+            <div className="shrink-0 -mt-6"><CatCharacter colorway="orange" state="awake" accessory="crown" size={72} /></div>
             <motion.div
               initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
               className="panel2 p-3.5 text-[12.5px] leading-relaxed rounded-tl-none relative"
@@ -90,17 +90,10 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ② 今日行动清单(第一屏核心) */}
-      <div className="surface p-5">
-        <ActionList refreshKey={actionRefresh} />
-      </div>
-
-      {/* ③ 核心数据(收敛一行) */}
+      {/* ③ 核心数据(一行) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
         <div className="surface p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-[11.5px] font-medium" style={{ color: "var(--ink-2)" }}>会员健康度 · {fmt(k.totalMembers)} 人</span>
-          </div>
+          <div className="text-[11.5px] font-medium" style={{ color: "var(--ink-2)" }}>会员健康度 · {fmt(k.totalMembers)} 人</div>
           <div className="mt-2.5 flex h-2.5 rounded-full overflow-hidden gap-0.5">
             {health.map((h) => (
               <motion.div key={h.label} initial={{ width: 0 }} animate={{ width: `${healthTotal > 0 ? (h.v / healthTotal) * 100 : 0}%` }} transition={{ duration: 0.7 }}
@@ -156,7 +149,7 @@ export default function DashboardPage() {
         <div className="surface p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-[15px] font-bold">今日经营结果</h2>
-            <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>真实订单口径 · 归因分色见收益中心</span>
+            <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>真实订单口径</span>
           </div>
           <div className="grid grid-cols-2 gap-2.5">
             <div className="panel2 p-3">
