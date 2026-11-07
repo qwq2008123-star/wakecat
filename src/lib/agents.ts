@@ -612,6 +612,7 @@ export async function runOrchestrator(user: SessionUserLike, goal: string, emit:
   await appendLog({ taskId, agent: "喵老板", step: "理解目标并建任务", message: planSummary });
   emit({ type: "stage", stage: "plan-goal", label: "喵老板·理解目标", status: "ok" });
   emit({ type: "log", agent: "喵老板", step: "执行计划", message: planSummary });
+  emit({ type: "log", agent: "喵老板", step: "派单", message: "这个任务我分派给四位员工:侦探喵(会员体检)→ 军师喵(定策略)→ 销售喵(触达)→ 财务喵(复盘),现在开始依次执行" });
 
   // 2. 侦探喵
   const det = await runDetective(ctx);
@@ -623,6 +624,7 @@ export async function runOrchestrator(user: SessionUserLike, goal: string, emit:
   emit({ type: "log", agent: "喵老板", step: "验收", message: det.summary || "侦探喵完成体检" });
 
   // 3. 军师喵
+  emit({ type: "log", agent: "喵老板", step: "派单", message: "体检完成,交棒军师喵:为每位机会会员定一对一策略" });
   const strat = await runStrategist(ctx);
   emit({ type: "log", agent: "喵老板", step: "验收", message: strat.summary || "军师喵完成策略" });
 

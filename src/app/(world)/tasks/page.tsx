@@ -224,7 +224,13 @@ export default function TasksPage() {
   }
 
   /* 下达目标 → 喵老板编排(SSE 直播:侦探体检 → 军师策略 → 待审批;全自动开启时一跑到底) */
-  const DEMO_GOAL = "把 45 天没来的高价值会员唤回来,预算 50 元";
+  const DEMO_GOALS = [
+    "把 45 天没来的高价值会员唤回来,预算 50 元",
+    "给 90 天以上没来的沉睡会员送一张 20 元体验券,预算 40 元",
+    "给最近 60 天没到店的会员推荐新品「猫眼镭射」,预算 60 元",
+    "给手绘小花偏好的会员做一次轻回访,预算 30 元",
+  ];
+  const demoIdx = useRef(0);
   async function submitGoal(textArg?: string) {
     const g = (textArg ?? goal).trim();
     if (!g || goalBusy) return;
@@ -298,8 +304,12 @@ export default function TasksPage() {
             {goalBusy ? <Loader2 size={14} className="anim-spin" /> : <SendHorizonal size={14} />} 下达
           </button>
           <button className="btn btn-ghost shrink-0" disabled={goalBusy}
-            title={`预置目标「${DEMO_GOAL}」一键下达;全自动模式开启时直达触达`}
-            onClick={() => { setGoal(DEMO_GOAL); void submitGoal(DEMO_GOAL); }}>
+            title="预置目标轮换下达(每次不同人群,避免撞频次闸门);全自动模式开启时直达触达"
+            onClick={() => {
+              const g = DEMO_GOALS[demoIdx.current % DEMO_GOALS.length];
+              demoIdx.current += 1;
+              setGoal(g); void submitGoal(g);
+            }}>
             <Play size={14} /> 一键演示
           </button>
         </div>
