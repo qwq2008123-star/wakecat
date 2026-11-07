@@ -198,8 +198,9 @@ export function handleCustomerMessage(opts: {
     return reply;
   }
 
-  // ② 不满意/投诉 → 转人工,暂停营销
+  // ② 不满意/投诉 → 转人工,暂停营销,会话标记等待老板娘
   if (/(不满意|投诉|差评|态度)/.test(text)) {
+    sqlite.prepare("UPDATE conversations SET status='needs_human' WHERE id = ?").run(convId);
     const reply: ChatReply = {
       text: "真的非常抱歉,给你带来了不好的体验。我已经把情况记下来,并通知店员尽快联系你处理。你的这次对话我已暂停一切推销。",
       cards: [{ type: "transferred" }], quickReplies: [], stage: "aftercare",

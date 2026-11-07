@@ -342,7 +342,7 @@ export async function runStrategist(ctx: Ctx) {
         await db.insert(strategies).values({
           id: rid("st"), taskId: ctx.taskId, memberId: String(a.memberId),
           kind: String(a.kind), content: String(a.content).slice(0, 500),
-          channel: "wecom-mock",
+          channel: "wecom-manual",
           predictedCost: Number(a.predictedCost) || 0,
           predictedUplift: Number(a.predictedUplift) || 0,
           reason: String(a.reason ?? "").slice(0, 300), createdAt: nowIso(),
@@ -372,7 +372,7 @@ export async function runStrategist(ctx: Ctx) {
       for (const r of rows) {
         await db.insert(strategies).values({
           id: rid("st"), taskId: ctx.taskId, memberId: r.memberId,
-          kind: r.kind, content: r.content, channel: "wecom-mock",
+          kind: r.kind, content: r.content, channel: "wecom-manual",
           predictedCost: r.cost, predictedUplift: Math.round(r.uplift),
           reason: r.reason, createdAt: nowIso(),
         });
@@ -400,7 +400,7 @@ export async function runStrategist(ctx: Ctx) {
     for (const r of rows) {
       await db.insert(strategies).values({
         id: rid("st"), taskId: ctx.taskId, memberId: r.memberId,
-        kind: r.kind, content: r.content, channel: "wecom-mock",
+        kind: r.kind, content: r.content, channel: "wecom-manual",
         predictedCost: r.cost, predictedUplift: Math.round(r.uplift),
         reason: r.reason, createdAt: nowIso(),
       });

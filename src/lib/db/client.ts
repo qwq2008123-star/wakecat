@@ -27,6 +27,9 @@ function openDb(): Database.Database {
     if (!cols("finance_entries").includes("strategy_id")) {
       raw.exec("ALTER TABLE finance_entries ADD COLUMN strategy_id TEXT");
     }
+    if (!cols("orders").includes("attribution")) {
+      raw.exec("ALTER TABLE orders ADD COLUMN attribution TEXT NOT NULL DEFAULT 'natural'");
+    }
     for (const col of ["service_name TEXT", "staff_name TEXT", "scheduled_for TEXT", "source TEXT NOT NULL DEFAULT 'seller'"]) {
       const name = col.split(" ")[0];
       if (!cols("appointments").includes(name)) {

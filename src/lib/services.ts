@@ -14,6 +14,8 @@ import { catStateOf } from "./queries";
 
 const now = () => new Date().toISOString();
 const rid = (p: string) => `${p}_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+const memNameSafe = (memberId: string) =>
+  (sqlite.prepare("SELECT name FROM members WHERE id = ?").get(memberId) as { name: string } | undefined)?.name ?? "会员";
 
 /** Agent / API 层通用的最小用户上下文 */
 export type SessionUserLike = { storeId: string; name: string; role: string };
@@ -163,6 +165,16 @@ export async function queueAndSend(user: SessionUserLike, taskId: string, strate
     message: "闸门通过(授权/频次/预算),消息进入发送队列",
   });
 
+  // 半自动企微通道:AI 起草 → 商家在行动清单里复制到企微真实发送 → 回来点「已发送」
+  if (st.channel === 'wecom-manual') {
+    await db.update(outreachMessages).set({ status: 'awaiting_send' }).where(eq(outreachMessages.id, msgId));
+    await appendLog({
+      taskId, agent: "销售喵", step: "草稿就绪", toolName: "draft_for_manual_send",
+      message: `消息已起草,等待商家复制到企微真实发送给 ${memNameSafe(st.memberId)}`,
+    });
+    return { msgId, ok: false as const, failureReason: "awaiting_manual_send", manual: true, body: st.content, memberName: memNameSafe(st.memberId) };
+  }
+
   // 渠道真实调用(演示通道;失败如实记录)
   const mem = sqlite.prepare("SELECT name, phone_masked FROM members WHERE id = ?").get(st.memberId) as { name: string; phone_masked: string };
   const cfg = await getLlmConfig(user.storeId);
@@ -276,6 +288,7 @@ export async function recordVisit(user: SessionUser, memberId: string, opts: { s
   await db.insert(ordersTable).values({
     id: orderId, storeId: user.storeId, memberId,
     appointmentId: null, taskId: taskId ?? null,
+    attribution: taskId ? "ai_recall" : "natural",
     totalAmount: opts.amount, totalCost: svc?.cost ?? 0,
     status: "completed", occurredAt: now(),
   }).run();

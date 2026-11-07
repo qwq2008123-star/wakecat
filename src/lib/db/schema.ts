@@ -94,7 +94,7 @@ export const strategies = sqliteTable("strategies", {
   memberId: text("member_id").notNull(),
   kind: text("kind").notNull(), // coupon | new_item | rights | callback
   content: text("content").notNull(),
-  channel: text("channel").notNull().default("wecom-mock"),
+  channel: text("channel").notNull().default("wecom-manual"),
   predictedCost: real("predicted_cost").notNull().default(0),
   predictedUplift: real("predicted_uplift").notNull().default(0),
   reason: text("reason"),
@@ -270,6 +270,7 @@ export const orders = sqliteTable("orders", {
   memberId: text("member_id"),
   appointmentId: text("appointment_id"),
   taskId: text("task_id"),
+  attribution: text("attribution").notNull().default("natural"),
   totalAmount: real("total_amount").notNull(),
   totalCost: real("total_cost").notNull().default(0),
   status: text("status").notNull().default("completed"),
@@ -456,4 +457,19 @@ export const catBondLogs = sqliteTable("cat_bond_logs", {
   delta: integer("delta").notNull(),
   reason: text("reason").notNull(),
   createdAt: text("created_at").notNull(),
+});
+
+export const merchantActions = sqliteTable("merchant_actions", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull(),
+  dedupeKey: text("dedupe_key").notNull().unique(),
+  type: text("type").notNull(),
+  title: text("title").notNull(),
+  reason: text("reason"),
+  memberId: text("member_id"),
+  payloadJson: text("payload_json").notNull().default("{}"),
+  status: text("status").notNull().default("open"),
+  actedBy: text("acted_by"),
+  createdAt: text("created_at").notNull(),
+  actedAt: text("acted_at"),
 });

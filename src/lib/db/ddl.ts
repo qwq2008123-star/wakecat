@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS strategies (
   member_id TEXT NOT NULL,
   kind TEXT NOT NULL,
   content TEXT NOT NULL,
-  channel TEXT NOT NULL DEFAULT 'wecom-mock',
+  channel TEXT NOT NULL DEFAULT 'wecom-manual',
   predicted_cost REAL NOT NULL DEFAULT 0,
   predicted_uplift REAL NOT NULL DEFAULT 0,
   reason TEXT,
@@ -426,5 +426,19 @@ CREATE TABLE IF NOT EXISTS cat_bond_logs (
   delta INTEGER NOT NULL,
   reason TEXT NOT NULL,
   created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS merchant_actions (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL,
+  dedupe_key TEXT NOT NULL UNIQUE,
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  reason TEXT,
+  member_id TEXT,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'open',
+  acted_by TEXT,
+  created_at TEXT NOT NULL,
+  acted_at TEXT
 );
 `;

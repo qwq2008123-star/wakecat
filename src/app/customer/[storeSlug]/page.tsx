@@ -261,6 +261,26 @@ function BestieChatPanel({ storeSlug, visitorId, bound, catName, onEnergy }: {
 
   useEffect(() => { boxRef.current?.scrollTo({ top: boxRef.current.scrollHeight, behavior: "smooth" }); }, [msgs, busy]);
 
+  // 轮询老板娘人工回复(15s 一次)
+  useEffect(() => {
+    if (!visitorId) return;
+    const timer = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/customer/${storeSlug}/messages?visitorId=${visitorId}`);
+        const j = await r.json();
+        const lastHuman = (j.messages ?? []).filter((m: { direction: string }) => m.direction === "out").pop();
+        if (lastHuman) {
+          setMsgs((prev) => {
+            const lastText = prev.filter((m) => m.from === "emp").pop()?.text;
+            if (lastText === lastHuman.content) return prev;
+            return [...prev, { from: "emp", text: `💬 芳姐(老板娘): ${lastHuman.content}` }];
+          });
+        }
+      } catch { /* 静默轮询 */ }
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [visitorId, storeSlug]);
+
   async function send(t: string) {
     const text = t.trim();
     if (!text || busy) return;

@@ -6,7 +6,8 @@ import { usePathname } from "next/navigation";
 import { useState, ReactNode } from "react";
 import {
   LayoutDashboard, Cat, UsersRound, ClipboardList, BookOpen,
-  FlaskConical, TrendingUp, Bell, Menu, X, Settings,
+  TrendingUp, Bell, Menu, X,
+  MessageSquareText,
 } from "lucide-react";
 import CatCharacter from "./CatCharacter";
 import { StatusDot } from "./ui";
@@ -17,7 +18,7 @@ const NAV = [
   { href: "/members", label: "会员宇宙", icon: Cat },
   { href: "/tasks", label: "任务大厅", icon: ClipboardList },
   { href: "/memory", label: "记忆博物馆", icon: BookOpen },
-  { href: "/campaigns", label: "营销实验室", icon: FlaskConical },
+  { href: "/inbox", label: "会话接管", icon: MessageSquareText },
   { href: "/finance", label: "收益中心", icon: TrendingUp },
 ];
 
