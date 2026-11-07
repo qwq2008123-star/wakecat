@@ -28,16 +28,20 @@ class LocalImageStorage implements ImageStorage {
   }
 }
 
-class ObjectImageStorage implements ImageStorage {
-  async put(): Promise<string> {
-    throw new Error("对象存储适配未配置:设置 WAKECAT_STORAGE 与对象存储凭证后实现此适配器(接口见 ImageStorage)");
+class VercelBlobImageStorage implements ImageStorage {
+  async put(buf: Buffer, ext: string): Promise<string> {
+    const { put } = await import("@vercel/blob");
+    const blob = await put(`inspiration/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${ext}`, buf, {
+      access: "public", contentType: `image/${ext === "jpg" ? "jpeg" : ext}`,
+    });
+    return blob.url; // blob 公网 URL,客户端直接访问,不经 /api/img
   }
   async get(): Promise<Buffer> {
-    throw new Error("对象存储适配未配置");
+    throw new Error("Blob 模式下图片由公网 URL 直接提供,不经 /api/img 路由");
   }
 }
 
 export const imageStorage: ImageStorage =
-  process.env.WAKECAT_STORAGE && process.env.WAKECAT_STORAGE !== "local"
-    ? new ObjectImageStorage()
+  process.env.BLOB_READ_WRITE_TOKEN
+    ? new VercelBlobImageStorage()
     : new LocalImageStorage();

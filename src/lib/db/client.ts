@@ -1,14 +1,23 @@
-import Database from "better-sqlite3";
+import Database from "libsql";
 import { drizzle, BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import fs from "node:fs";
-import path from "node:path";
 import * as schema from "./schema";
 import { DDL } from "./ddl";
 
 export type DB = BetterSQLite3Database<typeof schema>;
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const DB_PATH = path.join(DATA_DIR, "wakecat.db");
+/* ============================================================
+   数据库客户端:libsql 驱动(better-sqlite3 的官方替换品,同步 API 不变)
+   - 本地开发:WAKECAT_DB_URL=file:./data/wakecat.db(或不设,用默认)
+   - 生产(Turso):WAKECAT_DB_URL=libsql://xxx.turso.io  WAKECAT_DB_TOKEN=xxx
+   同一份代码/SQL 在本地与云端都跑——方言是 SQLite,不换。
+   ============================================================ */
+
+const DB_URL_RAW = process.env.WAKECAT_DB_URL || "file:./data/wakecat.db";
+// Turso 鉴权走 URL 查询参数(libsql://xxx?authToken=yyy)
+const DB_URL = process.env.WAKECAT_DB_TOKEN
+  ? `${DB_URL_RAW}${DB_URL_RAW.includes("?") ? "&" : "?"}authToken=${process.env.WAKECAT_DB_TOKEN}`
+  : DB_URL_RAW;
+const IS_LOCAL = DB_URL_RAW.startsWith("file:");
 
 declare global {
   // eslint-disable-next-line no-var
@@ -17,9 +26,11 @@ declare global {
 
 function openDb(): Database.Database {
   if (!globalThis.__wxCatDb) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    const raw = new Database(DB_PATH);
-    raw.pragma("journal_mode = WAL");
+    const raw = new Database(DB_URL);
+    // WAL 只对本地文件有意义;Turso 远端自行管理
+    if (IS_LOCAL) {
+      try { raw.pragma("journal_mode = WAL"); } catch { /* 首次建库中 */ }
+    }
     raw.exec(DDL);
     // 轻量迁移:为旧库补充新增列
     const cols = (t: string) =>
@@ -42,6 +53,9 @@ function openDb(): Database.Database {
     if (!cols("inspiration_items").includes("image_hash")) {
       raw.exec("ALTER TABLE inspiration_items ADD COLUMN image_hash TEXT");
     }
+    if (!cols("staff_users").includes("password_hash")) {
+      raw.exec("ALTER TABLE staff_users ADD COLUMN password_hash TEXT");
+    }
     for (const col of ["service_name TEXT", "staff_name TEXT", "scheduled_for TEXT", "source TEXT NOT NULL DEFAULT 'seller'"]) {
       const name = col.split(" ")[0];
       if (!cols("appointments").includes(name)) {
@@ -57,5 +71,8 @@ function openDb(): Database.Database {
 }
 
 export const sqlite = openDb();
-export const db: DB = drizzle(sqlite, { schema });
+// libsql 包是 better-sqlite3 的官方替换品(同步 API 一致);
+// 类型用 @types/better-sqlite3(仅类型,运行时零依赖),一次诚实断言桥接
+type Bs3Database = import("better-sqlite3").Database;
+export const db: DB = drizzle(sqlite as unknown as Bs3Database, { schema });
 export { schema };

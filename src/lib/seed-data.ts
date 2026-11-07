@@ -1,5 +1,6 @@
 import { db, sqlite } from "./db/client";
 import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   stores, staffUsers, members, consumptionRecords, memberMemories,
   memberCats, agentConfigs, storeServices, storeStaffSchedules, customerConsents,
@@ -52,6 +53,10 @@ const QUIPS = [
   "喜欢聊八卦", "想试镭射款", "对猫过敏但爱看猫", "每次都坐靠窗位",
 ];
 
+export function hashPassword(password: string, salt: string): string {
+  return createHash("sha256").update(`${salt}:${password}`).digest("hex");
+}
+
 export function ensureSeeded() {
   const row = sqlite.prepare("SELECT COUNT(*) as c FROM stores").get() as { c: number };
   if (row.c > 0) return;
@@ -60,7 +65,13 @@ export function ensureSeeded() {
     id: STORE_ID, name: "喵屋美甲 · 金山店", ownerName: "芳姐", createdAt: daysAgo(720),
   }).run();
   db.insert(staffUsers).values([
-    { id: "user_owner", storeId: STORE_ID, name: "芳姐", role: "owner" },
+    {
+      id: "user_owner", storeId: STORE_ID, name: "芳姐", role: "owner",
+      // 生产部署:设置 WAKECAT_OWNER_PASSWORD 后,首次建库即写入老板娘登录密码(sha256 加盐)
+      passwordHash: process.env.WAKECAT_OWNER_PASSWORD
+        ? hashPassword(process.env.WAKECAT_OWNER_PASSWORD, "user_owner")
+        : null,
+    },
     { id: "user_staff", storeId: STORE_ID, name: "小林", role: "staff" },
   ]).run();
   db.insert(agentConfigs).values({

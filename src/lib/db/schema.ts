@@ -13,6 +13,7 @@ export const staffUsers = sqliteTable("staff_users", {
   storeId: text("store_id").notNull(),
   name: text("name").notNull(),
   role: text("role").notNull(), // owner | staff
+  passwordHash: text("password_hash"),
 });
 
 /* ---------- 会员域 ---------- */

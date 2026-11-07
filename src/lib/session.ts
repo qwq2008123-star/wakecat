@@ -18,8 +18,9 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   const jar = await cookies();
   const uid = jar.get(SESSION_COOKIE)?.value;
   if (!uid) {
-    // 本地单店演示:未登录时自动以老板娘身份操作(真实多租户部署时必须移除,
-    // 换成强制登录 + 会话校验;已知 TODO,不伪装成已实现)
+    // 自动老板娘身份:仅限本地演示(必须显式设置 WAKECAT_AUTO_OWNER=1)。
+    // 生产环境(Vercel 等)不设该变量 → 未登录一律 401,走 /api/auth/login。
+    if (process.env.WAKECAT_AUTO_OWNER !== "1") return null;
     const rows = await db.select().from(staffUsers).where(eq(staffUsers.role, "owner")).limit(1);
     const u = rows[0];
     return u ? { id: u.id, storeId: u.storeId, name: u.name, role: "owner" } : null;
