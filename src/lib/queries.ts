@@ -70,6 +70,12 @@ export async function listMembers(
       lastService: (r.last_service as string) || null,
       state,
       zone: zone as MemberRow["zone"],
+      risk: (tags.includes("卡快过期") ? "high" : state === "hibernate" ? "high" : state === "drowsy" ? "mid" : "low") as "high"|"mid"|"low",
+      strategyHint: tags.includes("卡快过期")
+        ? "卡即将到期,权益未消耗完——优先挽回"
+        : state === "hibernate" ? `已 ${(days??0)} 天未到店,建议组合拳唤回`
+        : state === "drowsy" ? "瞌睡期,用新色板和轻内容唤回"
+        : "状态健康,维持关怀节奏",
       catName: (r.cat_name as string) || "未命名",
       catColorway: (r.colorway as string) || "orange",
       catLv: (r.lv as number) || 1,
