@@ -214,13 +214,12 @@ export async function queueAndSend(user: SessionUserLike, taskId: string, strate
       });
       return { msgId, ok: true, channel: "in-site" };
     }
-    // 会员没绑 H5:诚实转人工通道,不假装送达
-    await db.update(outreachMessages).set({ status: 'awaiting_send', failureReason: d.reason }).where(eq(outreachMessages.id, msgId));
+    // 会员没上线:站内信真实语义——排队,等她绑定上线那一刻自动送达
+    await db.update(outreachMessages).set({ failureReason: d.reason }).where(eq(outreachMessages.id, msgId));
     await appendLog({
-      taskId, agent: "销售喵", step: "站内不可达,转人工", status: "error",
-      message: `${memNameSafe(st.memberId)} ${d.reason},消息已转人工通道(行动清单复制发送)`,
+      taskId, agent: "销售喵", step: "排队待送达", message: `${memNameSafe(st.memberId)} 还没上线,消息已排队,她绑定 H5 的瞬间自动送达`,
     });
-    return { msgId, ok: false as const, failureReason: "awaiting_manual_send", manual: true, body: st.content, memberName: memNameSafe(st.memberId) };
+    return { msgId, ok: false as const, failureReason: "queued_for_bind", queued: true, memberName: memNameSafe(st.memberId) };
   }
 
   // 半自动企微通道:AI 起草 → 商家在行动清单里复制到企微真实发送 → 回来点「已发送」
@@ -275,6 +274,31 @@ export async function queueAndSend(user: SessionUserLike, taskId: string, strate
 }
 
 /** 模拟会员回复(演示用;规则解析意图,不假装是真实意图识别) */
+/** 会员绑定上线 → 送达 TA 名下所有排队中的站内消息(站内信真实语义) */
+export async function deliverQueuedInSite(storeId: string, memberId: string): Promise<number> {
+  const rows = sqlite.prepare(`
+    SELECT id, body, task_id FROM outreach_messages
+    WHERE member_id = ? AND status = 'queued' AND channel = 'in-site'
+  `).all(memberId) as Array<Record<string, unknown>>;
+  let n = 0;
+  for (const r of rows) {
+    const d = deliverInSite(storeId, memberId, r.body as string, { taskId: r.task_id, messageId: r.id, queuedDelivery: true });
+    if (d.ok) {
+      sqlite.prepare("UPDATE outreach_messages SET status='sent', sent_at=?, external_id=? WHERE id=?")
+        .run(now(), `in-site:${d.conversationId}`, r.id as string);
+      sqlite.prepare("INSERT INTO message_events (id, message_id, event_type, meta_json, occurred_at) VALUES (?,?,?,?,?)")
+        .run(rid("me"), r.id as string, "sent",
+          JSON.stringify({ channel: "in-site", queuedDelivery: true, conversationId: d.conversationId }), now());
+      await appendLog({
+        taskId: r.task_id as string, agent: "销售喵", step: "排队消息送达",
+        message: `${memNameSafe(memberId)} 上线了,排队消息已送达 TA 的站内收件箱`,
+      });
+      n++;
+    }
+  }
+  return n;
+}
+
 /** 已排队(awaiting_send)的消息改走站内直发;供行动清单按钮调用 */
 export async function sendInSiteNow(user: SessionUser, messageId: string): Promise<{ ok: boolean; error?: string }> {
   const m = sqlite.prepare(`
