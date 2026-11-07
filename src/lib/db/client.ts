@@ -56,43 +56,6 @@ function openDb(): Database.Database {
     if (!cols("staff_users").includes("password_hash")) {
       raw.exec("ALTER TABLE staff_users ADD COLUMN password_hash TEXT");
     }
-    // WAKECAT 2.0:主动联系决策引擎
-    raw.exec(`CREATE TABLE IF NOT EXISTS contact_decisions (
-      id TEXT PRIMARY KEY,
-      store_id TEXT NOT NULL,
-      member_id TEXT NOT NULL,
-      decision TEXT NOT NULL,
-      category TEXT NOT NULL DEFAULT 'commercial',
-      need_type TEXT,
-      reason TEXT NOT NULL,
-      evidence_json TEXT NOT NULL DEFAULT '[]',
-      relevance REAL NOT NULL DEFAULT 0,
-      usefulness REAL NOT NULL DEFAULT 0,
-      timing REAL NOT NULL DEFAULT 0,
-      consent_status TEXT NOT NULL DEFAULT 'unknown',
-      total_score REAL NOT NULL DEFAULT 0,
-      task_id TEXT,
-      strategy_id TEXT,
-      service_name TEXT,
-      dedupe_key TEXT,
-      outcome TEXT,
-      created_at TEXT NOT NULL
-    )`);
-    raw.exec("CREATE INDEX IF NOT EXISTS idx_cd_member ON contact_decisions(store_id, member_id, created_at);");
-    raw.exec(`CREATE TABLE IF NOT EXISTS customer_preferences (
-      id TEXT PRIMARY KEY,
-      store_id TEXT NOT NULL,
-      member_id TEXT NOT NULL UNIQUE,
-      allow_commercial INTEGER NOT NULL DEFAULT 0,
-      allow_appointment_reminder INTEGER NOT NULL DEFAULT 1,
-      allow_new_items INTEGER NOT NULL DEFAULT 0,
-      allow_promotions INTEGER NOT NULL DEFAULT 0,
-      weekly_cap INTEGER NOT NULL DEFAULT 1,
-      quiet_start TEXT NOT NULL DEFAULT '22:00',
-      quiet_end TEXT NOT NULL DEFAULT '09:00',
-      rejected_categories_json TEXT NOT NULL DEFAULT '[]',
-      updated_at TEXT NOT NULL
-    )`);
     for (const col of ["service_name TEXT", "staff_name TEXT", "scheduled_for TEXT", "source TEXT NOT NULL DEFAULT 'seller'"]) {
       const name = col.split(" ")[0];
       if (!cols("appointments").includes(name)) {

@@ -13,7 +13,6 @@ import { getLlmConfig, LlmConfig } from "./llm";
 import { sendMessage } from "./channels";
 import { catStateOf } from "./queries";
 import { awardEnergy } from "./cats/engine";
-import { markDecision } from "./contact/engine";
 
 const now = () => new Date().toISOString();
 const rid = (p: string) => `${p}_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -126,31 +125,6 @@ export async function queueAndSend(user: SessionUserLike, taskId: string, strate
   const st = (await db.select().from(strategies).where(eq(strategies.id, strategyId)).limit(1))[0];
   if (!st || st.taskId !== taskId) throw new HttpError(404, "策略不存在");
 
-  // 闸门 0.5(WAKECAT 2.0):Contact Permission Guard——每次商业触达必须先过决策引擎。
-  // LLM/任务/任何调用方都无法绕过;引擎可以做出「保持沉默」的决策。
-  const { decideContact } = await import("./contact/engine");
-  const d = decideContact({
-    storeId: user.storeId, memberId: st.memberId,
-    category: "commercial", kind: st.kind,
-    taskId, strategyId,
-  });
-  if (d.decision === "stay_silent") {
-    await appendLog({
-      taskId, agent: "销售喵", step: "决策引擎·保持沉默", status: "error",
-      message: `对 ${memNameSafe(st.memberId)} 保持沉默:${d.reason}`,
-    });
-    return { msgId: d.decisionId, ok: false as const, silent: true, failureReason: d.reason, decision: d };
-  }
-  if (d.decision === "needs_review") {
-    // 0.6–0.8:进入人工审核——消息不出,等老板娘在「联系决策中心」批准
-    await appendLog({
-      taskId, agent: "销售喵", step: "决策引擎·待人工审核", status: "error",
-      message: `对 ${memNameSafe(st.memberId)} 的触达建议进入人工审核:${d.reason}(价值 ${d.scores.total})`,
-    });
-    return { msgId: d.decisionId, ok: false as const, needsReview: true, failureReason: "needs_review", decision: d };
-  }
-  await markDecision(d.decisionId, "approved_by_engine");
-
   // 幂等:同一任务+策略只允许一条消息
   const dup = sqlite.prepare(
     "SELECT id FROM outreach_messages WHERE task_id = ? AND strategy_id = ?"
@@ -228,7 +202,7 @@ export async function queueAndSend(user: SessionUserLike, taskId: string, strate
 
   // 站内直发通道:AI 起草 → 直接写进会员在本站的会话,客户打开 H5 即可看到并回复
   if (st.channel === 'in-site') {
-    const d = deliverInSite(user.storeId, st.memberId, st.content, { taskId, strategyId, kind: st.kind, commercial: true });
+    const d = deliverInSite(user.storeId, st.memberId, st.content, { taskId, strategyId, kind: st.kind });
     if (d.ok) {
       await db.update(outreachMessages).set({
         status: "sent", externalId: `in-site:${d.conversationId}`, sentAt: now(),
@@ -309,19 +283,13 @@ export async function queueAndSend(user: SessionUserLike, taskId: string, strate
 /** 模拟会员回复(演示用;规则解析意图,不假装是真实意图识别) */
 /** 会员绑定上线 → 送达 TA 名下所有排队中的站内消息(站内信真实语义) */
 export async function deliverQueuedInSite(storeId: string, memberId: string): Promise<number> {
-  // 2.0:上线投递不再是「把队列全倒出来」——
-  // ① 同文合并(多任务重复内容只留最新一条) ② 投递时二次校验商业授权
-  // ③ 商业消息受客户每周上限约束 ④ 其余继续排队,不冒充已送达
-  const { getOrCreatePrefs } = await import("./contact/engine");
-  const prefs = getOrCreatePrefs(storeId, memberId);
-
+  // 上线投递:同文合并(多任务重复内容只留最新一条),其余按序送达——不再一口气倒重复消息
   const rows = sqlite.prepare(`
     SELECT id, body, task_id, created_at FROM outreach_messages
     WHERE member_id = ? AND status = 'queued' AND channel = 'in-site'
     ORDER BY created_at ASC
   `).all(memberId) as Array<Record<string, unknown>>;
 
-  // ① 同文合并:body 相同的只保留最新一条,其余标记 superseded
   const byBody = new Map<string, Record<string, unknown>>();
   const superseded: string[] = [];
   for (const r of rows) {
@@ -332,36 +300,16 @@ export async function deliverQueuedInSite(storeId: string, memberId: string): Pr
   for (const id of superseded) {
     sqlite.prepare("UPDATE outreach_messages SET status='cancelled', failure_reason='重复内容已合并' WHERE id=?").run(id);
   }
-  let deliverable = [...byBody.values()];
-
-  // ② 投递时二次校验授权:客户关闭商业推荐后,排队中的商业消息作废(不偷跑)
-  if (!prefs.allowCommercial) {
-    for (const r of deliverable) {
-      sqlite.prepare("UPDATE outreach_messages SET status='cancelled', failure_reason='客户已关闭商业推荐' WHERE id=?").run(String(r.id));
-    }
-    return 0;
-  }
-
-  // ③ 每周上限:本周已送达商业消息 + 本次投递 ≤ weeklyCap,超出继续排队
-  const deliveredThisWeek = (sqlite.prepare(`
-    SELECT COUNT(*) AS c FROM outreach_messages
-    WHERE member_id = ? AND status = 'sent' AND created_at > datetime('now', '-7 day')
-  `).get(memberId) as { c: number }).c;
-  const remaining = Math.max(0, prefs.weeklyCap - deliveredThisWeek);
-  if (deliverable.length > remaining) {
-    // 保留最新的一条优先投递,其余继续排队
-    deliverable = deliverable.slice(-Math.max(1, remaining));
-  }
 
   let n = 0;
-  for (const r of deliverable) {
+  for (const r of byBody.values()) {
     // 幂等 claim:先把状态从 queued 抢占为 sending,抢不到说明另一处正在送
     const claim = sqlite.prepare(`
       UPDATE outreach_messages SET status = 'sending', failure_reason = 'delivering'
       WHERE id = ? AND status = 'queued'
     `).run(String(r.id));
     if (claim.changes === 0) continue;
-    const d = deliverInSite(storeId, memberId, String(r.body), { taskId: r.task_id, messageId: r.id, queuedDelivery: true, commercial: true });
+    const d = deliverInSite(storeId, memberId, String(r.body), { taskId: r.task_id, messageId: r.id, queuedDelivery: true });
     if (d.ok) {
       sqlite.prepare("UPDATE outreach_messages SET status='sent', sent_at=?, external_id=? WHERE id=?")
         .run(now(), `in-site:${d.conversationId}`, String(r.id));
