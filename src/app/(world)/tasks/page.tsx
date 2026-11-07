@@ -210,6 +210,7 @@ export default function TasksPage() {
   const [goalBusy, setGoalBusy] = useState(false);
   const [goalLogs, setGoalLogs] = useState<string[]>([]);
   const [execBusyId, setExecBusyId] = useState<string | null>(null);
+  const [doneHint, setDoneHint] = useState<string | null>(null);
   const [execLogs, setExecLogs] = useState<Record<string, string[]>>({});
   const goalBoxRef = useRef<HTMLDivElement>(null);
 
@@ -243,8 +244,15 @@ export default function TasksPage() {
       if (done?.taskId) {
         setGoal("");
         await refresh();
-        setFilter("pending_approval");
+        // 完成后跳到结果:按最终状态筛选 + 展开任务卡 + 滚动定位
+        setFilter((done.status as TaskStatus) || "pending_approval");
         setExpandedId(done.taskId);
+        setTimeout(() => {
+          document.getElementById(`task-${done.taskId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 350);
+        setDoneHint(done.status === "completed"
+          ? "任务已完成——点「去驾驶舱」看行动清单与工作日志"
+          : "任务已就绪,等你批准");
       }
     } catch (e) {
       setGoalLogs((prev) => [...prev, `✗ ${e instanceof Error ? e.message : "执行失败"}`]);
@@ -322,6 +330,15 @@ export default function TasksPage() {
         )}
       </div>
 
+      {doneHint && (
+        <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+          className="surface p-4 flex items-center gap-3" style={{ borderColor: "var(--green)" }}>
+          <span className="text-[13px] flex-1" style={{ color: "var(--green)" }}>✓ {doneHint}</span>
+          <a className="btn btn-sm" href="/dashboard">去驾驶舱看行动清单 →</a>
+          <button className="btn btn-ghost btn-sm" onClick={() => setDoneHint(null)}>知道了</button>
+        </motion.div>
+      )}
+
       <div className="flex flex-wrap gap-1.5">
         {FILTERS.map((f) => {
           const active = filter === f.key;
@@ -339,8 +356,9 @@ export default function TasksPage() {
       <div className="space-y-3.5">
         <AnimatePresence initial={false}>
           {list.map((t) => (
+            <div key={t.id} id={`task-${t.id}`}>
             <TaskCard
-              key={t.id} task={t}
+              task={t}
               onDecide={decide}
               onExecute={executeTask}
               execBusy={execBusyId === t.id}
@@ -348,6 +366,7 @@ export default function TasksPage() {
               expanded={expandedId === t.id}
               onToggle={() => setExpandedId(expandedId === t.id ? null : t.id)}
             />
+            </div>
           ))}
         </AnimatePresence>
         {list.length === 0 && (
