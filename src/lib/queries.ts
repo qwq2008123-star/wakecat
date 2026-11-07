@@ -7,7 +7,8 @@ export type CatState = "active" | "drowsy" | "hibernate" | "sick";
 export type MemberRow = {
   id: string; name: string; phoneMasked: string; level: string;
   tags: string[]; joinedAt: string; isDemo: number;
-  daysSinceVisit: number | null; totalSpend: number; visits: number;
+  daysSinceVisit: number | null; lastVisitDays?: number | null;
+  totalSpend: number; visits: number;
   lastService: string | null; state: CatState; zone: string;
   spend: number; catName: string; catColorway: string;
   catLv: number; catXp: number; decorations: string[];
@@ -64,6 +65,7 @@ export async function listMembers(
       level: r.level as string, tags,
       joinedAt: r.joined_at as string, isDemo: r.is_demo as number,
       daysSinceVisit: days,
+      lastVisitDays: days, // 前端 MemberCatView 的字段名(缺了会 undefined→NaN→整页崩)
       totalSpend: spend,
       spend: spend,
       visits: (r.visits as number) || 0,

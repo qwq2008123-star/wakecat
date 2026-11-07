@@ -36,16 +36,17 @@ const SERVICE_POOL = [
 /** 确定性消费历史(演示):以会员 id 为种子,同一会员结果稳定 */
 export function getPurchaseHistory(m: MemberCatView): PurchaseRecord[] {
   const rnd = mulberry32(hash(m.id));
-  const n = Math.max(3, Math.min(6, Math.round(m.visits / 1.6)));
+  const n = Math.max(3, Math.min(6, Math.round((m.visits ?? 0) / 1.6)));
   const out: PurchaseRecord[] = [];
   for (let i = 0; i < n; i++) {
     const service = i === 0 ? m.favoriteService : SERVICE_POOL[Math.floor(rnd() * SERVICE_POOL.length)];
-    const days = Math.min(m.lastVisitDays + i * 21 + Math.floor(rnd() * 12), 300);
+    // 字段缺失时按 0 处理:绝不让 NaN 进 new Date()(toISOString 会抛 Invalid time value,整页崩)
+    const days = Math.min((m.lastVisitDays ?? 0) + i * 21 + Math.floor(rnd() * 12), 300);
     const d = new Date(Date.now() - days * 86400_000);
     out.push({
       service,
       amount: 88 + Math.floor(rnd() * 90),
-      date: d.toISOString().slice(0, 10),
+      date: Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 10) : "",
     });
   }
   return out;
