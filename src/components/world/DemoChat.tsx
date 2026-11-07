@@ -1,13 +1,12 @@
 "use client";
-
-/* 演示对话窗口:回复来自员工剧本池,界面明确标注未连接真实 Agent */
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { SendHorizonal, Info } from "lucide-react";
+import { SendHorizonal } from "lucide-react";
 import CatCharacter from "./CatCharacter";
 import { Employee } from "@/mock-data/types";
 
-type Msg = { from: "user" | "emp"; text: string };
+/* 员工工作台对话(真实):GLM 带该员工的实时经营数据应答;失败诚实降级数据模板 */
+type Msg = { from: "user" | "emp"; text: string; engine?: "llm" | "rules" };
 
 export default function DemoChat({ emp }: { emp: Employee }) {
   const [msgs, setMsgs] = useState<Msg[]>([
@@ -15,26 +14,40 @@ export default function DemoChat({ emp }: { emp: Employee }) {
   ]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
-  const replyIdx = useRef(0);
   const boxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     boxRef.current?.scrollTo({ top: boxRef.current.scrollHeight, behavior: "smooth" });
   }, [msgs, typing]);
 
-  function send() {
+  async function send() {
     const text = input.trim();
     if (!text || typing) return;
     setMsgs((m) => [...m, { from: "user", text }]);
     setInput("");
     setTyping(true);
-    setTimeout(() => {
-      const reply = emp.sampleReplies[replyIdx.current % emp.sampleReplies.length];
-      replyIdx.current += 1;
+    try {
+      const r = await fetch(`/api/agents/${emp.id}/chat`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: text,
+          history: msgs.slice(-8).map((m) => ({ role: m.from === "user" ? "user" : "assistant", content: m.text })),
+        }),
+      });
+      const j = await r.json();
+      setMsgs((m) => [...m, {
+        from: "emp",
+        text: j.text ?? (j.error ? `我这边出了点状况(${j.error}),稍后再问我一次。` : "…"),
+        engine: j.engine,
+      }]);
+    } catch {
+      setMsgs((m) => [...m, { from: "emp", text: "网络出了点状况,稍后再问我一次。", engine: "rules" }]);
+    } finally {
       setTyping(false);
-      setMsgs((m) => [...m, { from: "emp", text: reply }]);
-    }, 900 + Math.random() * 700);
+    }
   }
+
+  const lastEngine = [...msgs].reverse().find((m) => m.engine)?.engine;
 
   return (
     <div className="surface overflow-hidden flex flex-col" style={{ height: 460 }}>
@@ -45,13 +58,16 @@ export default function DemoChat({ emp }: { emp: Employee }) {
           <div className="text-[13.5px] font-bold">{emp.name}</div>
           <div className="text-[11px]" style={{ color: "var(--ink-3)" }}>{emp.title}</div>
         </div>
-        <span className="tag tag-yellow ml-auto">演示对话 · 未连接真实 Agent</span>
+        <span className="tag ml-auto" style={lastEngine === "rules"
+          ? { color: "var(--yellow)", borderColor: "var(--yellow)" }
+          : { color: "var(--green)", borderColor: "var(--green)" }}>
+          {lastEngine === "rules" ? "⚙ 规则引擎(数据模板)" : "✦ 真实 Agent · 带实时经营数据"}
+        </span>
       </div>
       {/* 消息区 */}
       <div ref={boxRef} className="flex-1 overflow-y-auto p-4 space-y-3">
-        <div className="flex items-center gap-1.5 text-[11px] justify-center" style={{ color: "var(--ink-3)" }}>
-          <Info size={11} />
-          以下回复来自角色剧本(演示交互),第二阶段接入大模型后由真实 Agent 应答
+        <div className="text-[11px] text-center" style={{ color: "var(--ink-3)" }}>
+          它引用的都是此刻数据库里的真实数字;要派活去「任务大厅」下目标。
         </div>
         {msgs.map((m, i) => (
           <motion.div
@@ -60,7 +76,7 @@ export default function DemoChat({ emp }: { emp: Employee }) {
           >
             {m.from === "emp" && <CatCharacter colorway={emp.colorway} state="awake" accessory={null} size={30} />}
             <div
-              className="max-w-[80%] px-3.5 py-2.5 text-[13px] rounded-2xl"
+              className="max-w-[80%] px-3.5 py-2.5 text-[13px] rounded-2xl whitespace-pre-wrap"
               style={m.from === "user"
                 ? { background: "linear-gradient(135deg, var(--brand), #6a58e8)", borderTopRightRadius: 6 }
                 : { background: "var(--panel-2)", border: "1px solid var(--line-soft)", borderTopLeftRadius: 6 }}
