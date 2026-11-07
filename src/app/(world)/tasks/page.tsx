@@ -1,14 +1,52 @@
 "use client";
 
-/* AI 任务大厅:AI 发现的经营机会,批准/拒绝/暂停通过前端状态机演示 */
-import { useEffect, useMemo, useState } from "react";
+/* AI 任务大厅:给喵老板下目标 → AI 团队编排 → 你批准 → 销售喵真实执行(半自动触达) */
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronDown, CircleCheck, CircleX, Pause, Info } from "lucide-react";
+import { ChevronDown, CircleCheck, CircleX, Pause, Info, SendHorizonal, Loader2 } from "lucide-react";
 import CatCharacter from "@/components/world/CatCharacter";
 import { DemoTag, PageHeader } from "@/components/world/ui";
 import { dataProvider } from "@/lib/data-provider";
 import { TaskStatus, WakeTask } from "@/mock-data/types";
 import { EMPLOYEE_MAP } from "@/mock-data/employees";
+
+type AgentEvent =
+  | { type: "stage"; stage: string; label: string; status: "start" | "ok" | "error"; engine?: string }
+  | { type: "log"; agent: string; step: string; message?: string; tool?: string; detail?: string }
+  | { type: "done"; taskId: string; title: string; status: string; summary: string };
+
+/** 读 SSE 流(fetch + getReader;POST 不能用 EventSource) */
+async function runSSE(url: string, body: object, onEvent: (e: AgentEvent) => void): Promise<AgentEvent[]> {
+  const res = await fetch(url, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok || !res.body) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error((j as { error?: string }).error ?? `接口错误 ${res.status}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  const events: AgentEvent[] = [];
+  let buf = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const parts = buf.split("\n\n");
+    buf = parts.pop() ?? "";
+    for (const p of parts) {
+      const line = p.split("\n").find((l) => l.startsWith("data: "));
+      if (!line) continue;
+      try {
+        const e = JSON.parse(line.slice(6)) as AgentEvent;
+        events.push(e);
+        onEvent(e);
+      } catch { /* 跳过不完整帧 */ }
+    }
+  }
+  return events;
+}
 
 const STATUS_META: Record<TaskStatus, { label: string; cls: string }> = {
   draft: { label: "草稿", cls: "" },
@@ -32,8 +70,11 @@ const FILTERS: { key: TaskStatus | "all"; label: string }[] = [
   { key: "rejected", label: "已驳回" },
 ];
 
-function TaskCard({ task, onDecide, expanded, onToggle }: {
-  task: WakeTask; onDecide: (id: string, s: TaskStatus) => void;
+function TaskCard({ task, onDecide, onExecute, execBusy, execLogs, expanded, onToggle }: {
+  task: WakeTask;
+  onDecide: (id: string, s: TaskStatus) => void;
+  onExecute: (id: string) => void;
+  execBusy: boolean; execLogs: string[];
   expanded: boolean; onToggle: () => void;
 }) {
   const owner = EMPLOYEE_MAP[task.ownerId];
@@ -126,8 +167,10 @@ function TaskCard({ task, onDecide, expanded, onToggle }: {
                   </>
                 )}
                 {task.status === "approved" && (
-                  <button className="btn btn-orange btn-sm" onClick={(e) => { e.stopPropagation(); onDecide(task.id, "running"); }}>
-                    开始执行
+                  <button className="btn btn-orange btn-sm" disabled={execBusy}
+                    onClick={(e) => { e.stopPropagation(); onExecute(task.id); }}>
+                    {execBusy ? <Loader2 size={13} className="anim-spin" /> : null}
+                    {execBusy ? "销售喵执行中…" : "开始执行(销售喵真实触达)"}
                   </button>
                 )}
                 {task.status === "running" && (
@@ -141,9 +184,16 @@ function TaskCard({ task, onDecide, expanded, onToggle }: {
                   </button>
                 )}
                 <span className="text-[11.5px] self-center ml-1" style={{ color: "var(--ink-3)" }}>
-                  状态变更即时生效,刷新页面恢复演示初始状态
+                  执行会真实创建触达消息(半自动:AI 起草 → 你复制去企微发送)
                 </span>
               </div>
+              {execLogs.length > 0 && (
+                <div className="panel2 mt-4 p-3.5 max-h-[240px] overflow-y-auto rounded-xl">
+                  {execLogs.map((l, i) => (
+                    <div key={i} className="mono text-[11.5px] leading-relaxed" style={{ color: "var(--ink-2)" }}>{l}</div>
+                  ))}
+                </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -156,11 +206,64 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState<WakeTask[]>([]);
   const [filter, setFilter] = useState<TaskStatus | "all">("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [goal, setGoal] = useState("");
+  const [goalBusy, setGoalBusy] = useState(false);
+  const [goalLogs, setGoalLogs] = useState<string[]>([]);
+  const [execBusyId, setExecBusyId] = useState<string | null>(null);
+  const [execLogs, setExecLogs] = useState<Record<string, string[]>>({});
+  const goalBoxRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { dataProvider.getTasks().then(setTasks); }, []);
+  const refresh = () => dataProvider.getTasks().then(setTasks);
+  useEffect(() => { refresh(); }, []);
+  useEffect(() => { goalBoxRef.current?.scrollTo({ top: goalBoxRef.current.scrollHeight }); }, [goalLogs]);
 
   async function decide(id: string, status: TaskStatus) {
-    setTasks(await dataProvider.setTaskStatus(id, status));
+    await dataProvider.setTaskStatus(id, status);
+    refresh();
+    if (status === "approved") setExpandedId(id);
+  }
+
+  /* 下达目标 → 喵老板编排(SSE 直播:侦探体检 → 军师策略 → 待审批) */
+  async function submitGoal() {
+    const g = goal.trim();
+    if (!g || goalBusy) return;
+    setGoalBusy(true); setGoalLogs([`▶ 你对喵老板说:「${g}」`]);
+    try {
+      const events = await runSSE("/api/goal", { goal: g }, (e) => {
+        setGoalLogs((prev) => [...prev, formatEvent(e)]);
+      });
+      const done = events.find((e) => e.type === "done");
+      if (done?.taskId) {
+        setGoal("");
+        await refresh();
+        setFilter("pending_approval");
+        setExpandedId(done.taskId);
+      }
+    } catch (e) {
+      setGoalLogs((prev) => [...prev, `✗ ${e instanceof Error ? e.message : "执行失败"}`]);
+    } finally { setGoalBusy(false); }
+  }
+
+  /* 批准后执行 → 销售喵真实触达(三闸门 → 半自动通道)→ 财务喵复盘 */
+  async function executeTask(id: string) {
+    if (execBusyId) return;
+    setExecBusyId(id);
+    setExecLogs((p) => ({ ...p, [id]: [`▶ 销售喵开始执行…`] }));
+    try {
+      const events = await runSSE(`/api/tasks/${id}/execute`, {}, (e) => {
+        setExecLogs((p) => ({ ...p, [id]: [...(p[id] ?? []), formatEvent(e)] }));
+      });
+      const done = events.find((e) => e.type === "done");
+      if (done) {
+        setExecLogs((p) => ({ ...p, [id]: [...(p[id] ?? []),
+          done.status === "completed"
+            ? "✓ 执行完成——去「驾驶舱」今日行动清单,复制文案去企微发送"
+            : `✗ 执行结束:${done.summary}`] }));
+      }
+      await refresh();
+    } catch (e) {
+      setExecLogs((p) => ({ ...p, [id]: [...(p[id] ?? []), `✗ ${e instanceof Error ? e.message : "执行失败"}`] }));
+    } finally { setExecBusyId(null); }
   }
 
   const list = useMemo(
@@ -172,9 +275,37 @@ export default function TasksPage() {
     <div className="space-y-5">
       <PageHeader
         title="AI 任务大厅"
-        desc="AI 员工主动发现经营机会并立项;所有对外触达都要在这里经你批准。批准、拒绝、暂停的流转在本页即时演示。"
-        right={<DemoTag label="演示任务" />}
+        desc="给喵老板下一句目标,它带队体检会员、定策略;对外触达必须经你批准,执行走半自动通道(你亲自去企微发送)。"
+        right={<DemoTag label="真实任务" />}
       />
+
+      {/* ① 给喵老板下目标 */}
+      <div className="surface p-5">
+        <div className="flex items-center gap-2 mb-2.5">
+          <CatCharacter colorway="orange" state="awake" accessory="crown" size={30} />
+          <b className="text-[14px]">给喵老板下达经营目标</b>
+          <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>它拆解任务 → 侦探喵体检 → 军师喵出策略 → 回到这里等你批准</span>
+        </div>
+        <div className="flex gap-2">
+          <input
+            className="input" value={goal} disabled={goalBusy}
+            placeholder="例:把 45 天没来的高价值会员唤回来,预算 50 元"
+            onChange={(e) => setGoal(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") submitGoal(); }}
+          />
+          <button className="btn shrink-0" onClick={submitGoal} disabled={!goal.trim() || goalBusy}>
+            {goalBusy ? <Loader2 size={14} className="anim-spin" /> : <SendHorizonal size={14} />} 下达
+          </button>
+        </div>
+        {goalLogs.length > 0 && (
+          <div ref={goalBoxRef} className="panel2 mt-3 p-3.5 max-h-[220px] overflow-y-auto rounded-xl">
+            {goalLogs.map((l, i) => (
+              <div key={i} className="mono text-[11.5px] leading-relaxed" style={{ color: "var(--ink-2)" }}>{l}</div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="flex flex-wrap gap-1.5">
         {FILTERS.map((f) => {
           const active = filter === f.key;
@@ -195,6 +326,9 @@ export default function TasksPage() {
             <TaskCard
               key={t.id} task={t}
               onDecide={decide}
+              onExecute={executeTask}
+              execBusy={execBusyId === t.id}
+              execLogs={execLogs[t.id] ?? []}
               expanded={expandedId === t.id}
               onToggle={() => setExpandedId(expandedId === t.id ? null : t.id)}
             />
@@ -208,4 +342,16 @@ export default function TasksPage() {
       </div>
     </div>
   );
+}
+
+function formatEvent(e: AgentEvent): string {
+  if (e.type === "stage") {
+    const mark = e.status === "ok" ? "✓" : e.status === "error" ? "✗" : "▸";
+    return `${mark} ${e.label}${e.engine ? `(${e.engine})` : ""}`;
+  }
+  if (e.type === "log") {
+    const bits = [e.agent ? `【${e.agent}】` : "", e.step ? `${e.step}:` : "", e.message ?? ""];
+    return bits.filter(Boolean).join(" ");
+  }
+  return e.type === "done" ? `✓ ${e.summary}` : "";
 }
