@@ -141,10 +141,10 @@ function StyleD(state: CatState, p: Palette, crown: boolean, gold: string, gem: 
         </g>
       )}
       <ellipse cx="60" cy="108" rx="30" ry="6" fill="#000" opacity=".35" />
-      <path d="M34 96 q-4 -18 6 -26 l40 0 q10 8 6 26 q-26 8 -52 0 z" fill={`url(#jd${uid})`} />
-      <path d="M60 14 q34 0 34 36 q0 10 -6 13 q-28 8 -56 0 q-6 -3 -6 -13 q0 -36 34 -36 z" fill={`url(#jd${uid})`} />
-      <path d="M33 32 L29 8 L53 20 Z" fill={`url(#jd${uid})`} opacity=".95" />
-      <path d="M87 32 L91 8 L67 20 Z" fill={`url(#jd${uid})`} opacity=".95" />
+      <path d="M34 96 q-4 -18 6 -26 l40 0 q10 8 6 26 q-26 8 -52 0 z" fill={`url(#jd_${uid})`} />
+      <path d="M60 14 q34 0 34 36 q0 10 -6 13 q-28 8 -56 0 q-6 -3 -6 -13 q0 -36 34 -36 z" fill={`url(#jd_${uid})`} />
+      <path d="M33 32 L29 8 L53 20 Z" fill={`url(#jd_${uid})`} opacity=".95" />
+      <path d="M87 32 L91 8 L67 20 Z" fill={`url(#jd_${uid})`} opacity=".95" />
       <ellipse cx="44" cy="30" rx="13" ry="7" fill="#fff" opacity=".55" transform="rotate(-18 44 30)" />
       <circle cx="52" cy="22" r="2.6" fill="#fff" opacity=".8" />
       {eyes}
@@ -184,7 +184,7 @@ function StyleE(state: CatState, p: Palette, crown: boolean) {
     for (let x = 0; x < PIXMAP[y].length; x++) {
       let ch = PIXMAP[y][x];
       if (ch === ".") continue;
-      if (state === "sleep" && ch === "W") ch = "B";
+      if (state === "sleep" && (ch === "W" || ch === "E")) ch = "B";
       if (state === "happy" && ch === "E" && (y === 6 || y === 7) && x !== 4 && x !== 12) continue; // happy:眯眼
       rects.push(<rect key={`${x}-${y}`} x={4 + x * 7} y={6 + y * 6.6} width={7} height={6.6} fill={col[ch]} />);
     }
