@@ -576,9 +576,9 @@ export async function runAccountant(ctx: Ctx) {
  * 编排流水线是确定性控制(可靠性优先),每个环节内部是真实的 LLM 工具调用。
  * 喵老板的"拆解目标"由 LLM 生成任务标题与计划,失败时用规则模板,全程留痕。
  */
-export async function runOrchestrator(user: SessionUserLike, goal: string, emit: Emit) {
+export async function runOrchestrator(user: SessionUserLike, goal: string, emit: Emit, existingTaskId?: string) {
   const config = await getLlmConfig(user.storeId);
-  const taskId = await createGoalTask(user.storeId, goal);
+  const taskId = existingTaskId ?? await createGoalTask(user.storeId, goal);
   const ctx: Ctx = { storeId: user.storeId, taskId, emit, config };
 
   // 1. 喵老板拆解目标
