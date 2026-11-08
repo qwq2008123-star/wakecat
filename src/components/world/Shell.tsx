@@ -7,7 +7,7 @@ import {
 import { useState, ReactNode } from "react";
 import {
   LayoutDashboard, Cat, UsersRound, ClipboardList, BookOpen,
-  TrendingUp, Bell, Menu, X, Settings, Globe, Presentation,
+  TrendingUp, Bell, Menu, X, Settings, Globe,
   MessageSquareText,
 } from "lucide-react";
 import CatCharacter from "./CatCharacter";
@@ -22,7 +22,6 @@ const NAV = [
   { href: "/inbox", label: "会话接管", icon: MessageSquareText },
   { href: "/finance", label: "收益中心", icon: TrendingUp },
   { href: "/settings", label: "系统设置", icon: Settings },
-  { href: "/pitch", label: "演示提词", icon: Presentation },
   { href: "/landing.html", label: "宣传首页", icon: Globe },
 ];
 
